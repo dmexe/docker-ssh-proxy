@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"daemon/agent"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,10 +14,10 @@ import (
 )
 
 type SshClientHandler struct {
-	sshConn       *ssh.ServerConn
-	newChannels   <-chan ssh.NewChannel
-	requests      <-chan *ssh.Request
-	agentCreateFn AgentCreateFunc
+	sshConn     *ssh.ServerConn
+	newChannels <-chan ssh.NewChannel
+	requests    <-chan *ssh.Request
+	createAgent agent.CreateHandler
 }
 
 func (h *SshClientHandler) Handle() error {
@@ -50,25 +51,25 @@ func (h *SshClientHandler) handleChannelRequest(newChannel ssh.NewChannel) {
 		return
 	}
 
-	agent, err := h.agentCreateFn()
+	agentHandler, err := h.createAgent()
 	if err != nil {
 		h.closeChannel(connection)
 		log.Errorf("Could not create agent (%s)", err)
 		return
 	}
 
-	closer := h.createChannelCloser(agent.(Agent), connection)
+	closer := h.createChannelCloser(agentHandler, connection)
 
 	go func() {
 		defer closer()
 
-		var agentTty *AgentTtyRequest
+		var agentTty *agent.TtyRequest
 
 		for {
 			select {
 
 			case <-time.After(1 * time.Second):
-				if !agent.(Agent).IsHandled() {
+				if !agentHandler.IsHandled() {
 					log.Warn("Could not handle request within 1 second")
 					goto END_LOOP
 				}
@@ -87,14 +88,14 @@ func (h *SshClientHandler) handleChannelRequest(newChannel ssh.NewChannel) {
 						continue
 					}
 
-					handleRequest := &AgentHandleRequest{
+					handleRequest := &agent.HandleRequest{
 						Payload: string(payload),
 						Tty:     agentTty,
 						Reader:  connection.(io.Reader),
 						Writer:  connection.(io.Writer),
 					}
 
-					if err := agent.(Agent).Handle(handleRequest); err != nil {
+					if err := agentHandler.Handle(handleRequest); err != nil {
 						log.Error(err)
 						h.replyReq(req, false)
 						continue
@@ -104,7 +105,7 @@ func (h *SshClientHandler) handleChannelRequest(newChannel ssh.NewChannel) {
 
 					go func() {
 						defer closer()
-						if err := agent.(Agent).Wait(); err != nil {
+						if err := agentHandler.Wait(); err != nil {
 							log.Error(err)
 						}
 					}()
@@ -130,7 +131,7 @@ func (h *SshClientHandler) handleChannelRequest(newChannel ssh.NewChannel) {
 						continue
 					}
 
-					if err := agent.(Agent).Resize(resize); err != nil {
+					if err := agentHandler.Resize(resize); err != nil {
 						log.Error(err)
 						h.replyReq(req, false)
 						continue
@@ -165,7 +166,7 @@ func (h *SshClientHandler) parseExecReq(b []byte) ([]byte, error) {
 	return execBytes, nil
 }
 
-func (h *SshClientHandler) parsePtyReq(b []byte) (*AgentTtyRequest, error) {
+func (h *SshClientHandler) parsePtyReq(b []byte) (*agent.TtyRequest, error) {
 	buffer := bytes.NewBuffer(b)
 	termLenBytes := buffer.Next(4)
 	if len(termLenBytes) != 4 {
@@ -189,7 +190,7 @@ func (h *SshClientHandler) parsePtyReq(b []byte) (*AgentTtyRequest, error) {
 		return nil, err
 	}
 
-	req := &AgentTtyRequest{
+	req := &agent.TtyRequest{
 		Term:   string(termBytes),
 		Width:  resize.Width,
 		Height: resize.Height,
@@ -210,7 +211,7 @@ func (h *SshClientHandler) replyReq(req *ssh.Request, value bool) {
 	}
 }
 
-func (h *SshClientHandler) parseDims(b []byte) (*AgentResizeRequest, error) {
+func (h *SshClientHandler) parseDims(b []byte) (*agent.ResizeRequest, error) {
 	if len(b) < 8 {
 		return nil, errors.New(fmt.Sprintf("Could not read req demissions, expected buffer len >= 8, got=%d", len(b)))
 	}
@@ -218,7 +219,7 @@ func (h *SshClientHandler) parseDims(b []byte) (*AgentResizeRequest, error) {
 	width := binary.BigEndian.Uint32(b)
 	height := binary.BigEndian.Uint32(b[4:])
 
-	req := &AgentResizeRequest{
+	req := &agent.ResizeRequest{
 		Width:  width,
 		Height: height,
 	}
@@ -234,11 +235,11 @@ func (h *SshClientHandler) closeChannel(channel ssh.Channel) {
 	}
 }
 
-func (h *SshClientHandler) createChannelCloser(agent Agent, channel ssh.Channel) func() {
+func (h *SshClientHandler) createChannelCloser(agentHandler agent.Handler, channel ssh.Channel) func() {
 	var once sync.Once
 
 	closeHandler := func() {
-		if err := agent.Close(); err != nil {
+		if err := agentHandler.Close(); err != nil {
 			log.Errorf("Could not close agent (%s)", err)
 		} else {
 			log.Debugf("Agent successfuly closed")

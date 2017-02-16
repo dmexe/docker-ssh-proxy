@@ -1,7 +1,8 @@
 package main
 
 import (
-	payload "daemon/payload"
+	"daemon/agent"
+	"daemon/payload"
 	"flag"
 	log "github.com/Sirupsen/logrus"
 )
@@ -31,13 +32,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dockerClient, err := NewDockerClient()
+	dockerClient, err := agent.NewDockerClient()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	server, err := NewSshServer(privateKeyFile, listenAddress, func() (interface{}, error) {
-		return NewDockerAgent(dockerClient, jwtPayload)
+	server, err := NewSshServer(privateKeyFile, listenAddress, func() (agent.Handler, error) {
+		return agent.NewDockerHandler(dockerClient, jwtPayload)
 	})
 
 	if err != nil {

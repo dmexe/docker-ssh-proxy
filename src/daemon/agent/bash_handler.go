@@ -1,4 +1,4 @@
-package main
+package agent
 
 /*
 import (
@@ -54,7 +54,7 @@ func (bash *BashIoAgent) Handle(req *IoAgentHandleRequest) error {
 		if err != nil {
 			log.Errorf("Failed to copy stream (%s)", err)
 		} else {
-			log.Debugf("Write complete, %agent bytes", bytes)
+			log.Debugf("Write complete, %h bytes", bytes)
 		}
 		once.Do(wg.Done)
 	}()
@@ -64,7 +64,7 @@ func (bash *BashIoAgent) Handle(req *IoAgentHandleRequest) error {
 		if err != nil {
 			log.Errorf("Failed to copy stream (%s)", err)
 		} else {
-			log.Debugf("Read complete, %agent bytes", bytes)
+			log.Debugf("Read complete, %h bytes", bytes)
 		}
 		once.Do(wg.Done)
 	}()

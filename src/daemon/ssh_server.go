@@ -1,6 +1,7 @@
 package main
 
 import (
+	"daemon/agent"
 	"errors"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
@@ -12,10 +13,10 @@ import (
 type SshServer struct {
 	config        *ssh.ServerConfig
 	listenAddress string
-	agentCreateFn AgentCreateFunc
+	createAgent   agent.CreateHandler
 }
 
-func NewSshServer(privateKeyFile string, listenAddress string, agentCreateFn AgentCreateFunc) (*SshServer, error) {
+func NewSshServer(privateKeyFile string, listenAddress string, agentCreateFn agent.CreateHandler) (*SshServer, error) {
 	config := &ssh.ServerConfig{
 		NoClientAuth: true,
 	}
@@ -35,19 +36,19 @@ func NewSshServer(privateKeyFile string, listenAddress string, agentCreateFn Age
 	server := &SshServer{
 		config:        config,
 		listenAddress: listenAddress,
-		agentCreateFn: agentCreateFn,
+		createAgent:   agentCreateFn,
 	}
 
 	return server, nil
 }
 
-func (srv *SshServer) Start() error {
-	listener, err := net.Listen("tcp", srv.listenAddress)
+func (s *SshServer) Start() error {
+	listener, err := net.Listen("tcp", s.listenAddress)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Failed to listen on %s (%s)", srv.listenAddress, err))
+		return errors.New(fmt.Sprintf("Failed to listen on %s (%s)", s.listenAddress, err))
 	}
 
-	log.Printf("Listening on %s...", srv.listenAddress)
+	log.Printf("Listening on %s...", s.listenAddress)
 
 	for {
 		tcpConn, err := listener.Accept()
@@ -56,17 +57,17 @@ func (srv *SshServer) Start() error {
 			continue
 		}
 
-		sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, srv.config)
+		sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, s.config)
 		if err != nil {
 			log.Errorf("Failed to handshake (%s)", err)
 			continue
 		}
 
 		clientHandler := &SshClientHandler{
-			sshConn:       sshConn,
-			newChannels:   chans,
-			requests:      reqs,
-			agentCreateFn: srv.agentCreateFn,
+			sshConn:     sshConn,
+			newChannels: chans,
+			requests:    reqs,
+			createAgent: s.createAgent,
 		}
 
 		log.Printf("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())

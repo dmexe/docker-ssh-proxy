@@ -25,7 +25,7 @@ func NewJwtParserFromEnv() (*JwtParser, error) {
 	return NewJwtParser(secret)
 }
 
-func (p *JwtParser) Parse(token string) (*Filter, error) {
+func (p *JwtParser) Parse(token string) (*Request, error) {
 	parsed, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
 		return []byte(p.secret), nil
 	})
@@ -40,7 +40,7 @@ func (p *JwtParser) Parse(token string) (*Filter, error) {
 	containerEnv := claims["container.env"]
 	containerLabel := claims["container.label"]
 
-	filter := &Filter{}
+	filter := &Request{}
 
 	if containerId != nil {
 		filter.ContainerId = containerId.(string)
