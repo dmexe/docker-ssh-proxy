@@ -1,0 +1,6 @@
+/pkg/
+/src/daemon/vendor
+/src/github.com
+/bin/
+/.cache/
+/.idea/
