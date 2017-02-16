@@ -64,7 +64,7 @@ func (h *DockerHandler) Handle(req *HandleRequest) error {
 	return h.execCommand(matched, req)
 }
 
-func (h *DockerHandler) IsHandled() bool {
+func (h *DockerHandler) IsStarted() bool {
 	return h.exec != nil
 }
 
@@ -96,16 +96,6 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 	success := make(chan struct{}, 1)
 	started := make(chan error, 1)
 
-	startExecOptions := docker.StartExecOptions{
-		InputStream:  req.Reader,
-		OutputStream: req.Writer,
-		ErrorStream:  req.Writer,
-		Detach:       false,
-		Tty:          false,
-		RawTerminal:  true,
-		Success:      success,
-	}
-
 	go func() {
 		select {
 		case <-success:
@@ -115,6 +105,16 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 			started <- errors.New("Could not wait exec within 3 seconds")
 		}
 	}()
+
+	startExecOptions := docker.StartExecOptions{
+		InputStream:  req.Reader,
+		OutputStream: req.Writer,
+		ErrorStream:  req.Writer,
+		Detach:       false,
+		Tty:          false,
+		RawTerminal:  true,
+		Success:      success,
+	}
 
 	if req.Tty != nil {
 		startExecOptions.Tty = true
@@ -161,6 +161,7 @@ func (h *DockerHandler) isMatched(filter *payload.Request, container *docker.Con
 
 	if filter.ContainerEnv != "" {
 		for _, env := range container.Config.Env {
+			log.Infof("env (%s) [%s]", container.Name, env)
 			if env == filter.ContainerEnv {
 				return true
 			}

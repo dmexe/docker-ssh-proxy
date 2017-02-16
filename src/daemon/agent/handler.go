@@ -24,7 +24,7 @@ type HandleRequest struct {
 
 type Handler interface {
 	Handle(req *HandleRequest) error
-	IsHandled() bool
+	IsStarted() bool
 	Wait() error
 	Resize(tty *ResizeRequest) error
 	Close() error

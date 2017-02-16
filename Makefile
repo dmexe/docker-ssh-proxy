@@ -1,6 +1,7 @@
 GOVENDOR := $(shell pwd)/bin/govendor
 DAEMON   := $(shell pwd)/bin/daemon
 ID_RSA   := $(shell pwd)/bin/id_rsa
+PACKAGES := daemon daemon/agent daemon/payload daemon/utils
 
 export GOPATH := $(shell pwd)
 
@@ -9,16 +10,16 @@ export GOPATH := $(shell pwd)
 all: build
 
 fmt:
-	go fmt daemon
+	go fmt $(PACKAGES)
 
 build: fmt vet
 	go build -o $(DAEMON) daemon
 
 vet:
-	go vet daemon
+	go vet $(PACKAGES)
 
 test:
-	go test -v daemon/payload
+	go test -v daemon/agent
 
 run: all $(ID_RSA)
 	bin/daemon -k $(ID_RSA) -d

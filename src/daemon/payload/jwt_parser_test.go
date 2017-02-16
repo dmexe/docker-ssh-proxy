@@ -43,7 +43,7 @@ func Test_JwtParser_shouldFailOnExpiredToken(t *testing.T) {
 	require.Nil(t, parsed)
 }
 
-func NewTestJwtParser(t *testing.T) (*JwtParser) {
+func NewTestJwtParser(t *testing.T) *JwtParser {
 	secret := "secret"
 	parser, err := NewJwtParser(secret)
 

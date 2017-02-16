@@ -18,6 +18,7 @@ type SshClientHandler struct {
 	newChannels <-chan ssh.NewChannel
 	requests    <-chan *ssh.Request
 	createAgent agent.CreateHandler
+	agentTty    *agent.TtyRequest
 }
 
 func (h *SshClientHandler) Handle() error {
@@ -63,13 +64,11 @@ func (h *SshClientHandler) handleChannelRequest(newChannel ssh.NewChannel) {
 	go func() {
 		defer closer()
 
-		var agentTty *agent.TtyRequest
-
 		for {
 			select {
 
 			case <-time.After(1 * time.Second):
-				if !agentHandler.IsHandled() {
+				if !agentHandler.IsStarted() {
 					log.Warn("Could not handle request within 1 second")
 					goto END_LOOP
 				}
@@ -90,7 +89,7 @@ func (h *SshClientHandler) handleChannelRequest(newChannel ssh.NewChannel) {
 
 					handleRequest := &agent.HandleRequest{
 						Payload: string(payload),
-						Tty:     agentTty,
+						Tty:     h.agentTty,
 						Reader:  connection.(io.Reader),
 						Writer:  connection.(io.Writer),
 					}
@@ -114,14 +113,7 @@ func (h *SshClientHandler) handleChannelRequest(newChannel ssh.NewChannel) {
 					h.replyReq(req, true)
 
 				case "pty-req":
-					tty, err := h.parsePtyReq(req.Payload)
-					if err != nil {
-						log.Error(err)
-						h.replyReq(req, false)
-						continue
-					}
-					agentTty = tty
-					h.replyReq(req, true)
+					h.handleTtyReq(req)
 
 				case "window-change":
 					resize, err := h.parseDims(req.Payload)
@@ -147,6 +139,22 @@ func (h *SshClientHandler) handleChannelRequest(newChannel ssh.NewChannel) {
 
 	END_LOOP:
 	}()
+}
+
+func (h *SshClientHandler) handleTtyReq(req *ssh.Request) {
+	if h.agentTty != nil {
+		log.Warnf("tty-req called multiple times")
+		return
+	}
+
+	tty, err := h.parsePtyReq(req.Payload)
+	if err != nil {
+		log.Error(err)
+		h.replyReq(req, false)
+		return
+	}
+	h.agentTty = tty
+	h.replyReq(req, true)
 }
 
 func (h *SshClientHandler) parseExecReq(b []byte) ([]byte, error) {
