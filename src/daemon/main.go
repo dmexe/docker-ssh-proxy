@@ -1,6 +1,7 @@
 package main
 
 import (
+	payload "daemon/payload"
 	"flag"
 	log "github.com/Sirupsen/logrus"
 )
@@ -25,7 +26,7 @@ func main() {
 		log.Debug("Debug output enabled")
 	}
 
-	jwtPayload, err := NewJwtPayloadParser()
+	jwtPayload, err := payload.NewJwtParserFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}

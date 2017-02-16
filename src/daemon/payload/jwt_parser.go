@@ -1,28 +1,31 @@
-package main
+package payload
 
 import (
 	jwt "github.com/dgrijalva/jwt-go"
 	"os"
 )
 
-type JwtPayloadParser struct {
+type JwtParser struct {
 	secret string
 }
 
-func NewJwtPayloadParser() (*JwtPayloadParser, error) {
+func NewJwtParser(secret string) (*JwtParser, error) {
+	config := &JwtParser{
+		secret: secret,
+	}
+	return config, nil
+}
+
+func NewJwtParserFromEnv() (*JwtParser, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		secret = "none"
 	}
 
-	config := &JwtPayloadParser{
-		secret: secret,
-	}
-
-	return config, nil
+	return NewJwtParser(secret)
 }
 
-func (p *JwtPayloadParser) Parse(token string) (*Payload, error) {
+func (p *JwtParser) Parse(token string) (*Filter, error) {
 	parsed, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
 		return []byte(p.secret), nil
 	})
@@ -31,13 +34,13 @@ func (p *JwtPayloadParser) Parse(token string) (*Payload, error) {
 		return nil, err
 	}
 
-	payload := parsed.Claims.(jwt.MapClaims)
+	claims := parsed.Claims.(jwt.MapClaims)
 
-	containerId := payload["container.id"]
-	containerEnv := payload["container.env"]
-	containerLabel := payload["container.label"]
+	containerId := claims["container.id"]
+	containerEnv := claims["container.env"]
+	containerLabel := claims["container.label"]
 
-	filter := &Payload{}
+	filter := &Filter{}
 
 	if containerId != nil {
 		filter.ContainerId = containerId.(string)

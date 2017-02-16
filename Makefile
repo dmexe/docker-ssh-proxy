@@ -17,6 +17,9 @@ build: fmt vet
 vet:
 	go vet daemon
 
+test:
+	go test -v daemon/payload
+
 run: all $(ID_RSA)
 	bin/daemon -k $(ID_RSA) -d
 

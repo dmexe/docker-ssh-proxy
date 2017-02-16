@@ -1,6 +1,7 @@
 package main
 
 import (
+	"daemon/payload"
 	"errors"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
@@ -11,7 +12,7 @@ import (
 
 type DockerAgent struct {
 	cli       *docker.Client
-	jwt       *JwtPayloadParser
+	parser    payload.Parser
 	container *docker.Container
 	exec      *docker.Exec
 	closer    docker.CloseWaiter
@@ -21,16 +22,16 @@ func NewDockerClient() (*docker.Client, error) {
 	return docker.NewClientFromEnv()
 }
 
-func NewDockerAgent(client *docker.Client, jwt *JwtPayloadParser) (*DockerAgent, error) {
+func NewDockerAgent(client *docker.Client, parser payload.Parser) (*DockerAgent, error) {
 	agent := &DockerAgent{
-		cli: client,
-		jwt: jwt,
+		cli:    client,
+		parser: parser,
 	}
 	return agent, nil
 }
 
 func (agent *DockerAgent) Handle(req *AgentHandleRequest) error {
-	payload, err := agent.jwt.Parse(req.Payload)
+	filter, err := agent.parser.Parse(req.Payload)
 	if err != nil {
 		return err
 	}
@@ -48,14 +49,14 @@ func (agent *DockerAgent) Handle(req *AgentHandleRequest) error {
 			return err
 		}
 
-		if agent.isMatched(payload, inspect) {
+		if agent.isMatched(filter, inspect) {
 			matched = inspect
 			break
 		}
 	}
 
 	if matched == nil {
-		return errors.New(fmt.Sprintf("Could not found container with %+v", payload))
+		return errors.New(fmt.Sprintf("Could not found container with %+v", filter))
 	}
 
 	log.Debugf("Found container %s", matched.ID[:10])
@@ -153,7 +154,7 @@ func (agent *DockerAgent) Wait() error {
 	return nil
 }
 
-func (agent *DockerAgent) isMatched(filter *Payload, container *docker.Container) bool {
+func (agent *DockerAgent) isMatched(filter *payload.Filter, container *docker.Container) bool {
 	if filter.ContainerId != "" && strings.HasPrefix(container.ID, filter.ContainerId) {
 		return true
 	}
