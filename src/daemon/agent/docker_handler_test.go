@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnv(t *testing.T) {
+func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnvWithTty(t *testing.T) {
 	cli := NewTestDockerClient(t)
 
 	container := NewTestDockerContainer(t, cli, "FOO=bar", map[string]string{
@@ -86,7 +86,6 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnv(t *testing.T) {
 	}
 
 	require.NoError(t, handler.Close())
-
 	require.NoError(t, handler.Wait())
 
 	require.Contains(t, bb.String(), "echo term is $TERM\r\n")

@@ -18,7 +18,7 @@ type Session struct {
 	agentTty    *agent.TtyRequest
 	agent       agent.Handler
 	handled     bool
-	closedOne   sync.Once
+	closedOnce  sync.Once
 }
 
 func (s *Session) Handle() error {
@@ -40,7 +40,7 @@ func (s *Session) handleConnectionRequests() {
 }
 
 func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
-	if t := newChannel.ChannelType(); t != "Session" {
+	if t := newChannel.ChannelType(); t != "session" {
 		newChannel.Reject(ssh.UnknownChannelType, fmt.Sprintf("unknown channel type: %s", t))
 		log.Warnf("Unknown requested channel type: %s", t)
 		return
@@ -70,11 +70,9 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 				}
 
 				switch req.Type {
-				case "exec":
-					s.handleExecReq(req, channel)
 
-				case "shell":
-					reqReply(req, true)
+				case "exec", "shell":
+					s.handleAgentReq(req, channel)
 
 				case "pty-req":
 					s.handleTtyReq(req)
@@ -121,23 +119,9 @@ func (s *Session) handleResizeReq(req *ssh.Request) {
 	reqReply(req, true)
 }
 
-func (s *Session) handleExecReq(req *ssh.Request, channel ssh.Channel) {
+func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
 	if s.handled {
 		log.Warn("'exec' request called multiple times")
-		reqReply(req, false)
-		return
-	}
-
-	payload, err := reqParseExecPayload(req.Payload)
-	if err != nil {
-		log.Errorf("Could not parse request payload (%s)", err)
-		reqReply(req, false)
-		return
-	}
-
-	agentHandler, err := s.createAgent(string(payload))
-	if err != nil {
-		log.Errorf("Could not create agent (%s)", err)
 		reqReply(req, false)
 		return
 	}
@@ -146,6 +130,23 @@ func (s *Session) handleExecReq(req *ssh.Request, channel ssh.Channel) {
 		Tty:     s.agentTty,
 		Reader:  channel.(io.Reader),
 		Writer:  channel.(io.Writer),
+	}
+
+	if req.Type == "exec" {
+		execReq, err := reqParseExecPayload(req.Payload)
+		if err != nil {
+			log.Errorf("Could not parse request payload (%s)", err)
+			reqReply(req, false)
+			return
+		}
+		handleRequest.Exec = string(execReq)
+	}
+
+	agentHandler, err := s.createAgent(s.conn.User())
+	if err != nil {
+		log.Errorf("Could not create agent (%s)", err)
+		reqReply(req, false)
+		return
 	}
 
 	if err := agentHandler.Handle(handleRequest); err != nil {
@@ -207,5 +208,5 @@ func (s *Session) closeChannel(channel ssh.Channel) {
 		}
 	}
 
-	s.closedOne.Do(closer)
+	s.closedOnce.Do(closer)
 }

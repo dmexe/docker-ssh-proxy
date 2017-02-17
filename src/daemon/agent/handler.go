@@ -19,6 +19,7 @@ type HandleRequest struct {
 	Tty    *TtyRequest
 	Reader io.Reader
 	Writer io.Writer
+	Exec   string
 }
 
 type Handler interface {

@@ -36,9 +36,9 @@ func (p *JwtParser) Parse(token string) (*Request, error) {
 
 	claims := parsed.Claims.(jwt.MapClaims)
 
-	containerId := claims["container.id"]
-	containerEnv := claims["container.env"]
-	containerLabel := claims["container.label"]
+	containerId := claims["cid"]
+	containerEnv := claims["env"]
+	containerLabel := claims["lab"]
 
 	filter := &Request{}
 

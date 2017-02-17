@@ -35,7 +35,10 @@ pkg.list:
 	bin/install-deps
 	(cd src/daemon ; $(GOVENDOR) list)
 
-pkg.clean:
+pkg.remove.unused:
 	bin/install-deps
 	(cd src/daemon ; $(GOVENDOR) remove +unused)
 
+pkg.fetch.missing:
+	bin/install-deps
+	(cd src/daemon ; $(GOVENDOR) fetch +missing)

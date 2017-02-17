@@ -68,22 +68,36 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Tty:          true,
+		Tty:          false,
 		Cmd:          []string{"/bin/sh"},
 		Container:    container.ID,
 	}
 
 	if req.Tty != nil {
+		createExecOptions.Tty = true
+	}
+
+	if req.Tty != nil && req.Exec == "" {
 		createExecOptions.Cmd = []string{"/usr/bin/env", fmt.Sprintf("TERM=%s", req.Tty.Term), "sh"}
 	}
 
-	exec, err := h.cli.CreateExec(createExecOptions)
+	if req.Exec != "" {
+		args := []string{"/usr/bin/env"}
+		if req.Tty != nil {
+			args = append(args, fmt.Sprintf("TERM=%s", req.Tty.Term))
+		}
+		args = append(args, "sh", "-c", fmt.Sprintf("%s", req.Exec))
+		log.Debugf("Container session args %v", args)
+		createExecOptions.Cmd = args
+	}
+
+	session, err := h.cli.CreateExec(createExecOptions)
 	if err != nil {
 		return err
 	}
-	h.exec = exec
+	h.exec = session
 
-	log.Debugf("Container session successfuly created %s", exec.ID[:10])
+	log.Debugf("Container session successfuly created %s", session.ID[:10])
 
 	success := make(chan struct{}, 1)
 	started := make(chan error, 1)
@@ -112,7 +126,7 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 		startExecOptions.Tty = true
 	}
 
-	closer, err := h.cli.StartExecNonBlocking(exec.ID, startExecOptions)
+	closer, err := h.cli.StartExecNonBlocking(session.ID, startExecOptions)
 	if err != nil {
 		return err
 	}
@@ -125,7 +139,7 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 		}
 	}
 
-	log.Infof("Container session successfuly started %s", exec.ID[:10])
+	log.Infof("Container session successfuly started %s", session.ID[:10])
 
 	if req.Tty != nil {
 		if err := h.Resize(req.Tty.Resize()); err != nil {

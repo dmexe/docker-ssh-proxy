@@ -32,7 +32,7 @@ func reqParseExecPayload(b []byte) ([]byte, error) {
 	execLen := binary.BigEndian.Uint32(execLenBytes)
 	execBytes := buffer.Next(int(execLen))
 	if len(execBytes) != int(execLen) {
-		return nil, errors.New(fmt.Sprintf("Could not read TERM, expected len=%d, got %d", execLenBytes, len(execBytes)))
+		return nil, errors.New(fmt.Sprintf("Could not read 'exec' body, expected len=%d, got %d", execLenBytes, len(execBytes)))
 	}
 
 	return execBytes, nil
