@@ -107,8 +107,8 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 		case <-success:
 			success <- struct{}{}
 			started <- nil
-		case <-time.After(3 * time.Second):
-			started <- errors.New("Could not wait session within 3 seconds")
+		case <-time.After(15 * time.Second):
+			started <- errors.New("Could not wait session within 15 seconds")
 		}
 	}()
 

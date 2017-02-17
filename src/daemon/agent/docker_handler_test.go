@@ -85,7 +85,7 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T)
 	require.NoError(t, handler.Close())
 	require.NoError(t, handler.Wait())
 
-	require.Contains(t, pipe.String(), "linuxrc -> /bin/busybox")
+	require.Contains(t, pipe.String(), ".dockerenv\n")
 }
 
 func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
@@ -157,9 +157,7 @@ func Test_DockerHandler_shouldFailToHandleRequest(t *testing.T) {
 	}
 
 	t.Run("container not found", func(t *testing.T) {
-		simpleHandler(t, &payload.Request{
-			ContainerId: "notFound",
-		}, "Could not found container for ")
+		simpleHandler(t, &payload.Request{ContainerId: "notFound"}, "Could not found container for ")
 	})
 }
 
