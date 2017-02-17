@@ -13,6 +13,7 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
+	"errors"
 )
 
 func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnvWithTty(t *testing.T) {
@@ -42,9 +43,7 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnvWithTty(t *testi
 	var bb bytes.Buffer
 	go func() {
 		_, err := bb.ReadFrom(readIn)
-		if err != nil {
-			t.Errorf("Could read from pipe (%s)", err)
-		}
+		require.NoError(t, err)
 	}()
 
 	handleReq := &HandleRequest{
@@ -65,11 +64,60 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnvWithTty(t *testi
 	writeLine("echo uname is $(uname)")
 	writeLine("echo complete.")
 
+	require.NoError(t, waitForBytesStringAppearedInBuffer("complete.", &bb))
+	require.NoError(t, handler.Close())
+	require.NoError(t, handler.Wait())
+
+	require.Contains(t, bb.String(), "echo term is $TERM\r\n")
+	require.Contains(t, bb.String(), "term is xterm\r\n")
+
+	require.Contains(t, bb.String(), "echo uname is $(uname)\r\n")
+	require.Contains(t, bb.String(), "uname is Linux\r\n")
+}
+
+func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveCommand(t *testing.T) {
+	cli := NewTestDockerClient(t)
+
+	container := NewTestDockerContainer(t, cli, "FOO=bar", map[string]string{})
+	defer RemoveTestDockerContainer(t, cli, container)
+
+	filter := &payload.Request{
+		ContainerId: container.ID,
+	}
+
+	handler := NewTestDockerHandler(t, cli, filter)
+	defer CloseTestDockerHandler(t, handler)
+
+	readIn, readOut := io.Pipe()
+	writeIn, _ := io.Pipe()
+
+	var bb bytes.Buffer
+	go func() {
+		_, err := bb.ReadFrom(readIn)
+		require.NoError(t, err)
+	}()
+
+	handleReq := &HandleRequest{
+		Reader: iotest.NewReadLogger("[r]: ", writeIn),
+		Writer: iotest.NewWriteLogger("[w]: ", readOut),
+		Exec: "ls -la ; echo complete.",
+	}
+
+	require.NoError(t, handler.Handle(handleReq))
+	require.NoError(t, waitForBytesStringAppearedInBuffer("complete.", &bb))
+	require.NoError(t, handler.Close())
+	require.NoError(t, handler.Wait())
+
+	require.Contains(t, bb.String(), "linuxrc -> /bin/busybox")
+}
+
+func waitForBytesStringAppearedInBuffer(str string, bb *bytes.Buffer) error {
 	complete := make(chan bool)
+	defer close(complete)
 
 	go func() {
 		for {
-			if strings.Contains(bb.String(), "complete.") {
+			if strings.Contains(bb.String(), str) {
 				complete <- true
 				break
 			} else {
@@ -80,19 +128,10 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnvWithTty(t *testi
 
 	select {
 	case <-complete:
-		break
+		return nil
 	case <-time.After(10 * time.Second):
-		t.Error("Could wait response within 10 seconds")
+		return errors.New("Could wait response within 10 seconds")
 	}
-
-	require.NoError(t, handler.Close())
-	require.NoError(t, handler.Wait())
-
-	require.Contains(t, bb.String(), "echo term is $TERM\r\n")
-	require.Contains(t, bb.String(), "term is xterm\r\n")
-
-	require.Contains(t, bb.String(), "echo uname is $(uname)\r\n")
-	require.Contains(t, bb.String(), "uname is Linux\r\n")
 }
 
 func CloseTestDockerHandler(t *testing.T, handler *DockerHandler) {
