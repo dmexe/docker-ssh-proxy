@@ -89,3 +89,9 @@ func reqParseTtyPayload(b []byte) (*agent.TtyRequest, error) {
 
 	return req, nil
 }
+
+func buildExitStatus(code uint32) []byte {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, code)
+	return b
+}

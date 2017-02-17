@@ -37,8 +37,9 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 
 	handleReq := &HandleRequest{
 		Tty:    tty,
-		Reader: iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-		Writer: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+		Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+		Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+		Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
 	}
 
 	require.NoError(t, handler.Handle(handleReq))
@@ -50,7 +51,9 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 
 	require.NoError(t, pipe.WaitStringReceived("complete."))
 	require.NoError(t, handler.Close())
-	require.NoError(t, handler.Wait())
+
+	_, err := handler.Wait()
+	require.NoError(t, err)
 
 	require.Contains(t, pipe.String(), "echo term is $TERM\r\n")
 	require.Contains(t, pipe.String(), "term is xterm\r\n")
@@ -75,15 +78,18 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T)
 	pipe := testutils.NewTestingPipe()
 
 	handleReq := &HandleRequest{
-		Reader: iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-		Writer: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+		Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+		Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+		Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
 		Exec:   "ls -la ; echo complete.",
 	}
 
 	require.NoError(t, handler.Handle(handleReq))
 	require.NoError(t, pipe.WaitStringReceived("complete."))
 	require.NoError(t, handler.Close())
-	require.NoError(t, handler.Wait())
+
+	_, err := handler.Wait()
+	require.NoError(t, err)
 
 	require.Contains(t, pipe.String(), ".dockerenv\n")
 }
@@ -102,15 +108,18 @@ func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
 		pipe := testutils.NewTestingPipe()
 
 		handleReq := &HandleRequest{
-			Reader: iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-			Writer: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+			Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
 			Exec:   "echo complete.",
 		}
 
 		require.NoError(t, handler.Handle(handleReq))
 		require.NoError(t, pipe.WaitStringReceived("complete."))
 		require.NoError(t, handler.Close())
-		require.NoError(t, handler.Wait())
+
+		_, err := handler.Wait()
+		require.NoError(t, err)
 	}
 
 	t.Run("container.ID", func(t *testing.T) {
@@ -132,7 +141,7 @@ func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
 	})
 }
 
-func Test_DockerHandler_shouldFailToHandleRequest(t *testing.T) {
+func Test_DockerHandler_shouldFailToHandleRequests(t *testing.T) {
 	cli := NewTestDockerClient(t)
 	container := NewTestDockerContainer(t, cli, "FOO=BAR", map[string]string{})
 	defer RemoveTestDockerContainer(t, cli, container)
@@ -144,8 +153,9 @@ func Test_DockerHandler_shouldFailToHandleRequest(t *testing.T) {
 		pipe := testutils.NewTestingPipe()
 
 		handleReq := &HandleRequest{
-			Reader: iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-			Writer: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+			Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
 			Exec:   "true",
 		}
 
@@ -153,7 +163,10 @@ func Test_DockerHandler_shouldFailToHandleRequest(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), expect)
 		require.NoError(t, handler.Close())
-		require.NoError(t, handler.Wait())
+
+		code, err := handler.Wait()
+		require.Error(t, err)
+		require.Equal(t, 1, code)
 	}
 
 	t.Run("container not found", func(t *testing.T) {

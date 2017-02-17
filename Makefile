@@ -17,7 +17,7 @@ vet:
 	go vet $(PACKAGES)
 
 test: fmt vet
-	go test -p 2 -v $(PACKAGES)
+	go test -timeout 1m -v $(PACKAGES) && echo "\nall ok."
 
 run: all $(ID_RSA)
 	bin/daemon -k $(ID_RSA) -d

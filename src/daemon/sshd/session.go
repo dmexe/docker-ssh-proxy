@@ -6,7 +6,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"io"
-	"sync"
 	"time"
 )
 
@@ -18,7 +17,8 @@ type Session struct {
 	agentTty    *agent.TtyRequest
 	agent       agent.Handler
 	handled     bool
-	closedOnce  sync.Once
+	exited      bool
+	closed      bool
 }
 
 func (s *Session) Handle() error {
@@ -66,6 +66,7 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 
 			case req := <-requests:
 				if req == nil {
+					log.Debug("No more requests")
 					goto END_LOOP
 				}
 
@@ -128,8 +129,9 @@ func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
 
 	handleRequest := &agent.HandleRequest{
 		Tty:    s.agentTty,
-		Reader: channel.(io.Reader),
-		Writer: channel.(io.Writer),
+		Stdin:  channel.(io.Reader),
+		Stdout: channel.(io.Writer),
+		Stderr: channel.Stderr(),
 	}
 
 	if req.Type == "exec" {
@@ -159,11 +161,14 @@ func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
 	s.handled = true
 	reqReply(req, true)
 
+	log.Debugf("Request successfully handled")
+
 	go func() {
-		defer s.closeChannel(channel)
-		if err := agentHandler.Wait(); err != nil {
+		code, err := agentHandler.Wait()
+		if err != nil {
 			log.Errorf("Could not wait handler (%s)", err)
 		}
+		s.exitChannel(channel, uint32(code))
 	}()
 
 }
@@ -185,28 +190,45 @@ func (s *Session) handleTtyReq(req *ssh.Request) {
 	reqReply(req, true)
 }
 
+func (s *Session) exitChannel(channel ssh.Channel, code uint32) {
+	if s.exited {
+		log.Warnf("Channel exit called multiple times")
+		return
+	}
+	s.exited = true
+
+	if _, err := channel.SendRequest("exit-status", false, buildExitStatus(code)); err != nil {
+		log.Warnf("Could not send 'exit-status' request (%s)", err)
+		return
+	} else {
+		log.Debugf("Successfuly send request 'exit-status' (%d)", code)
+	}
+
+	s.closeChannel(channel)
+}
+
 func (s *Session) closeChannel(channel ssh.Channel) {
+	if s.closed {
+		log.Warnf("Channel close called multiple times")
+		return
+	}
+	s.closed = true
 
-	closer := func() {
-
-		if s.agent != nil {
-			if err := s.agent.Close(); err != nil {
-				log.Errorf("Could not close agent (%s)", err)
-			} else {
-				log.Debugf("Agent successfuly closed")
-			}
-		}
-
-		if err := channel.Close(); err != nil {
-			if err.Error() != "EOF" {
-				log.Warnf("Could not close channel (%s)", err)
-			} else {
-				log.Debugf("Could not close channel (%s)", err)
-			}
+	if s.agent != nil {
+		if err := s.agent.Close(); err != nil {
+			log.Errorf("Could not close agent (%s)", err)
 		} else {
-			log.Infof("Channel successfuly closed")
+			log.Debugf("Agent successfuly closed")
 		}
 	}
 
-	s.closedOnce.Do(closer)
+	if err := channel.Close(); err != nil {
+		if err.Error() != "EOF" {
+			log.Warnf("Could not close channel (%s)", err)
+		} else {
+			log.Debugf("Could not close channel (%s)", err)
+		}
+	} else {
+		log.Infof("Channel successfuly closed")
+	}
 }

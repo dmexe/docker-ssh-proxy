@@ -6,6 +6,9 @@ import (
 	"daemon/sshd"
 	"flag"
 	log "github.com/Sirupsen/logrus"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 var (
@@ -19,6 +22,12 @@ func init() {
 	flag.StringVar(&listenAddress, "l", "0.0.0.0:2200", "listen address")
 	flag.BoolVar(&debug, "d", false, "enable debug output")
 	flag.Parse()
+}
+
+func handleSignals() chan os.Signal {
+	signals := make(chan os.Signal)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+	return signals
 }
 
 func main() {
@@ -38,20 +47,36 @@ func main() {
 		log.Fatal(err)
 	}
 
-	server, err := sshd.NewServer(privateKeyFile, listenAddress, func(payload string) (agent.Handler, error) {
+	handler := func(payload string) (agent.Handler, error) {
 		filter, err := jwtParser.Parse(payload)
 		if err != nil {
 			return nil, err
 		}
 		return agent.NewDockerHandler(dockerClient, filter)
-	})
+	}
 
+	serverOptions := sshd.CreateServerOptions{
+		PrivateKeyFile: privateKeyFile,
+		ListenAddr:     listenAddress,
+	}
+
+	server, err := sshd.NewServer(serverOptions, handler)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = server.Start()
-	if err != nil {
+	if err := server.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	go func() {
+		for sig := range handleSignals() {
+			log.Infof("Got %s signal", sig)
+			server.Close()
+		}
+	}()
+
+	if err := server.Wait(); err != nil {
 		log.Fatal(err)
 	}
 }

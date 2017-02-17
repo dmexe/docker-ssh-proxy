@@ -17,15 +17,16 @@ type TtyRequest struct {
 
 type HandleRequest struct {
 	Tty    *TtyRequest
-	Reader io.Reader
-	Writer io.Writer
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
 	Exec   string
 }
 
 type Handler interface {
 	Handle(req *HandleRequest) error
 	Resize(tty *ResizeRequest) error
-	Wait() error
+	Wait() (int, error)
 	Close() error
 }
 
