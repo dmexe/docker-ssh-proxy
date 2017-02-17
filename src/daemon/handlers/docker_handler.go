@@ -6,8 +6,8 @@ import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/google/shlex"
 	"strings"
-	"time"
 )
 
 type DockerHandler struct {
@@ -52,7 +52,7 @@ func (h *DockerHandler) Handle(req *Request) error {
 	}
 
 	if matched == nil {
-		return errors.New(fmt.Sprintf("Could not found container for %v", h.payload))
+		return fmt.Errorf("Could not found container for %v", h.payload)
 	}
 
 	return h.startSession(matched, req)
@@ -80,13 +80,19 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 	}
 
 	if req.Exec != "" {
-		args := []string{"/usr/bin/env"}
+		cmdline := []string{"/usr/bin/env"}
 		if req.Tty != nil {
-			args = append(args, fmt.Sprintf("TERM=%s", req.Tty.Term))
+			cmdline = append(cmdline, fmt.Sprintf("TERM=%s", req.Tty.Term))
 		}
-		args = append(args, "sh", "-c", fmt.Sprintf("%s", req.Exec))
-		log.Debugf("Container session args %v", args)
-		createExecOptions.Cmd = args
+
+		args, err := shlex.Split(req.Exec)
+		if err != nil {
+			return err
+		}
+
+		cmdline = append(cmdline, args...)
+		log.Debugf("Container session with cmdline %v", cmdline)
+		createExecOptions.Cmd = cmdline
 	}
 
 	session, err := h.cli.CreateExec(createExecOptions)
@@ -97,7 +103,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 
 	log.Debugf("Container session successfuly created %s", session.ID[:10])
 
-	success := make(chan struct{}, 1)
+	success := make(chan struct{})
 
 	startExecOptions := docker.StartExecOptions{
 		InputStream:  req.Stdin,
@@ -105,13 +111,27 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 		ErrorStream:  req.Stderr,
 		Detach:       false,
 		Tty:          false,
-		RawTerminal:  true,
+		RawTerminal:  false,
 		Success:      success,
 	}
 
 	if req.Tty != nil {
+		startExecOptions.RawTerminal = true
 		startExecOptions.Tty = true
 	}
+
+	go func() {
+		select {
+		case <-success:
+			success <- struct{}{}
+
+			if req.Tty != nil {
+				if err := h.Resize(req.Tty.Resize()); err != nil {
+					log.Errorf("Could not resize tty (%s)", err)
+				}
+			}
+		}
+	}()
 
 	closer, err := h.cli.StartExecNonBlocking(session.ID, startExecOptions)
 	if err != nil {
@@ -119,32 +139,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 	}
 	h.closer = closer
 
-	started := make(chan error, 1)
-
-	go func() {
-		select {
-		case <-success:
-			success <- struct{}{}
-			started <- nil
-		case <-time.After(15 * time.Second):
-			started <- errors.New("Could not wait session within 15 seconds")
-		}
-	}()
-
-	select {
-	case err := <-started:
-		if err != nil {
-			return err
-		}
-	}
-
 	log.Infof("Container session successfuly started %s", session.ID[:10])
-
-	if req.Tty != nil {
-		if err := h.Resize(req.Tty.Resize()); err != nil {
-			return err
-		}
-	}
 
 	return nil
 }
@@ -153,7 +148,7 @@ func (h *DockerHandler) Wait() (Response, error) {
 	if h.closer != nil {
 		log.Debug("Starting wait for container session response")
 		if err := h.closer.Wait(); err != nil {
-			return Response{Code: 1}, errors.New(fmt.Sprintf("Could wait container session (%s)", err))
+			return Response{Code: 1}, fmt.Errorf("Could wait container session (%s)", err)
 		}
 	}
 
@@ -163,7 +158,7 @@ func (h *DockerHandler) Wait() (Response, error) {
 
 	inspect, err := h.cli.InspectExec(h.session.ID)
 	if err != nil {
-		return Response{Code: 1}, errors.New(fmt.Sprintf("Could not inspect session=%s (%s)", h.session.ID, err))
+		return Response{Code: 1}, fmt.Errorf("Could not inspect session=%s (%s)", h.session.ID, err)
 	}
 
 	log.Debugf("Process exited with code %d", inspect.ExitCode)
@@ -172,7 +167,7 @@ func (h *DockerHandler) Wait() (Response, error) {
 }
 
 func (h *DockerHandler) isMatched(container *docker.Container) bool {
-	if len(h.payload.ContainerId) > 8 && strings.HasPrefix(container.ID, h.payload.ContainerId) {
+	if len(h.payload.ContainerID) > 8 && strings.HasPrefix(container.ID, h.payload.ContainerID) {
 		log.Debugf("Match container by id=%s", container.ID)
 		return true
 	}
@@ -211,7 +206,7 @@ func (h *DockerHandler) Resize(req *Resize) error {
 	if req != nil && h.session != nil {
 		err := h.cli.ResizeExecTTY(h.session.ID, int(req.Height), int(req.Width))
 		if err != nil {
-			return errors.New(fmt.Sprintf("Could not resize tty (%s)", err))
+			return fmt.Errorf("Could not resize tty (%s)", err)
 		}
 		log.Debugf("Tty successfuly resized to %v", *req)
 	}
@@ -219,7 +214,6 @@ func (h *DockerHandler) Resize(req *Resize) error {
 }
 
 func (h *DockerHandler) Close() error {
-
 	if h.closed {
 		log.Warnf("Close session called multiple times")
 		return nil
@@ -229,10 +223,9 @@ func (h *DockerHandler) Close() error {
 	if h.session != nil && h.closer != nil {
 		err := h.closer.Close()
 		if err != nil {
-			return errors.New(fmt.Sprintf("Could not close container session (%s)", err))
+			return fmt.Errorf("Could not close container session (%s)", err)
 		}
 		log.Info("Container session successfuly closed")
 	}
-
 	return nil
 }

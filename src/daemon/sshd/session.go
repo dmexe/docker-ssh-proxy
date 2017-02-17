@@ -200,10 +200,9 @@ func (s *Session) exitChannel(channel ssh.Channel, code uint32) {
 	if _, err := channel.SendRequest("exit-status", false, buildExitStatus(code)); err != nil {
 		log.Warnf("Could not send 'exit-status' request (%s)", err)
 		return
-	} else {
-		log.Debugf("Successfuly send request 'exit-status' (%d)", code)
 	}
 
+	log.Debugf("Successfuly send request 'exit-status' (%d)", code)
 	s.closeChannel(channel)
 }
 

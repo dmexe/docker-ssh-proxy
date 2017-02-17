@@ -21,7 +21,7 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 	defer RemoveTestDockerContainer(t, cli, container)
 
 	payload := &payloads.Payload{
-		ContainerId: container.ID,
+		ContainerID: container.ID,
 	}
 
 	handler := NewTestDockerHandler(t, cli, payload)
@@ -69,7 +69,7 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T)
 	defer RemoveTestDockerContainer(t, cli, container)
 
 	payload := &payloads.Payload{
-		ContainerId: container.ID,
+		ContainerID: container.ID,
 	}
 
 	handler := NewTestDockerHandler(t, cli, payload)
@@ -81,7 +81,7 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T)
 		Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
 		Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
 		Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
-		Exec:   "ls -la ; echo complete.",
+		Exec:   "sh -c \"ls -la ; echo complete.\"",
 	}
 
 	require.NoError(t, handler.Handle(handleReq))
@@ -124,7 +124,7 @@ func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
 
 	t.Run("container.ID", func(t *testing.T) {
 		simpleHandler(t, &payloads.Payload{
-			ContainerId: container.ID,
+			ContainerID: container.ID,
 		})
 	})
 
@@ -170,7 +170,7 @@ func Test_DockerHandler_shouldFailToHandleRequests(t *testing.T) {
 	}
 
 	t.Run("container not found", func(t *testing.T) {
-		simpleHandler(t, &payloads.Payload{ContainerId: "notFound"}, "Could not found container for ")
+		simpleHandler(t, &payloads.Payload{ContainerID: "notFound"}, "Could not found container for ")
 	})
 }
 

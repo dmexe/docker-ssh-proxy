@@ -10,6 +10,9 @@ all: build
 fmt:
 	go fmt $(PACKAGES)
 
+lint:
+	golint $(PACKAGES)
+
 build: fmt vet
 	go build -o $(DAEMON) daemon
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"daemon/handlers"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
@@ -26,13 +25,13 @@ func reqParseExecPayload(b []byte) ([]byte, error) {
 	buffer := bytes.NewBuffer(b)
 	execLenBytes := buffer.Next(4)
 	if len(execLenBytes) != 4 {
-		return nil, errors.New(fmt.Sprintf("Could not read 'exec' request, expected len=4, got %d", len(execLenBytes)))
+		return nil, fmt.Errorf("Could not read 'exec' request, expected len=4, got %d", len(execLenBytes))
 	}
 
 	execLen := binary.BigEndian.Uint32(execLenBytes)
 	execBytes := buffer.Next(int(execLen))
 	if len(execBytes) != int(execLen) {
-		return nil, errors.New(fmt.Sprintf("Could not read 'exec' body, expected len=%d, got %d", execLenBytes, len(execBytes)))
+		return nil, fmt.Errorf("Could not read 'exec' body, expected len=%d, got %d", execLenBytes, len(execBytes))
 	}
 
 	return execBytes, nil
@@ -40,10 +39,7 @@ func reqParseExecPayload(b []byte) ([]byte, error) {
 
 func reqParseWinchPayload(b []byte) (*handlers.Resize, error) {
 	if len(b) < 8 {
-		return nil, errors.New(
-			fmt.Sprintf("Could not read 'window-change' request, expected buffer len >= 8, got=%d",
-				len(b),
-			))
+		return nil, fmt.Errorf("Could not read 'window-change' request, expected buffer len >= 8, got=%d", len(b))
 	}
 
 	width := binary.BigEndian.Uint32(b)
@@ -61,19 +57,19 @@ func reqParseTtyPayload(b []byte) (*handlers.Tty, error) {
 	buffer := bytes.NewBuffer(b)
 	termLenBytes := buffer.Next(4)
 	if len(termLenBytes) != 4 {
-		return nil, errors.New(fmt.Sprintf("Could not read pty-req, expected len=4, got %d", len(termLenBytes)))
+		return nil, fmt.Errorf("Could not read pty-req, expected len=4, got %d", len(termLenBytes))
 	}
 
 	termLen := binary.BigEndian.Uint32(termLenBytes)
 
 	termBytes := buffer.Next(int(termLen))
 	if len(termBytes) != int(termLen) {
-		return nil, errors.New(fmt.Sprintf("Could not read TERM, expected len=%d, got %d", termLen, len(termBytes)))
+		return nil, fmt.Errorf("Could not read TERM, expected len=%d, got %d", termLen, len(termBytes))
 	}
 
 	winchBytes := buffer.Next(8)
 	if len(winchBytes) != 8 {
-		return nil, errors.New(fmt.Sprintf("Could not read demissins, expected len=8, got %d", len(winchBytes)))
+		return nil, fmt.Errorf("Could not read demissins, expected len=8, got %d", len(winchBytes))
 	}
 
 	resize, err := reqParseWinchPayload(winchBytes)

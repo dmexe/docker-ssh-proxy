@@ -19,7 +19,7 @@ func Test_JwtParser_shouldSuccessfullyParseValidToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, payload)
 
-	require.Equal(t, payload.ContainerId, "cid")
+	require.Equal(t, payload.ContainerID, "cid")
 	require.Equal(t, payload.ContainerLabel, "clabel")
 	require.Equal(t, payload.ContainerEnv, "cenv")
 }

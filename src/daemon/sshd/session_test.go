@@ -42,7 +42,7 @@ func Test_Session_shouldSuccessfullyHandleRequests(t *testing.T) {
 }
 
 func Test_Session_shouldFailToCreateRequest(t *testing.T) {
-	testErr := errors.New("boom!")
+	testErr := errors.New("boom")
 
 	failHandler := func(_ string) (handlers.Handler, error) {
 		return nil, testErr
@@ -59,7 +59,7 @@ func Test_Session_shouldFailToCreateRequest(t *testing.T) {
 }
 
 func Test_Session_shouldFailToHandleRequest(t *testing.T) {
-	boom := errors.New("boom!")
+	boom := errors.New("boom")
 
 	server := NewTestServer(t, NewEchoHandler(handlers.EchoHandlerErrors{
 		Handle: boom,
@@ -74,7 +74,7 @@ func Test_Session_shouldFailToHandleRequest(t *testing.T) {
 }
 
 func Test_Session_shouldFailToWaitAgent(t *testing.T) {
-	boom := errors.New("boom!")
+	boom := errors.New("boom")
 
 	server := NewTestServer(t, NewEchoHandler(handlers.EchoHandlerErrors{
 		Wait: boom,

@@ -1,7 +1,7 @@
 package payloads
 
 type Payload struct {
-	ContainerId    string
+	ContainerID    string
 	ContainerEnv   string
 	ContainerLabel string
 }

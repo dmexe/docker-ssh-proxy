@@ -2,7 +2,6 @@ package sshd
 
 import (
 	"daemon/handlers"
-	"errors"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
@@ -23,6 +22,7 @@ type Server struct {
 	handlerFunc   handlers.HandlerFunc
 	listener      net.Listener
 	completed     chan error
+	closed        bool
 }
 
 func NewServer(opts CreateServerOptions, agentCreateFn handlers.HandlerFunc) (*Server, error) {
@@ -33,14 +33,14 @@ func NewServer(opts CreateServerOptions, agentCreateFn handlers.HandlerFunc) (*S
 	if len(opts.PrivateKeyBytes) == 0 {
 		privateBytes, err := ioutil.ReadFile(opts.PrivateKeyFile)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Failed to load private key %s (%s)", opts.PrivateKeyFile, err))
+			return nil, fmt.Errorf("Failed to load private key %s (%s)", opts.PrivateKeyFile, err)
 		}
 		opts.PrivateKeyBytes = privateBytes
 	}
 
 	private, err := ssh.ParsePrivateKey(opts.PrivateKeyBytes)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Failed to parse private key (%s)", err))
+		return nil, fmt.Errorf("Failed to parse private key (%s)", err)
 	}
 
 	config.AddHostKey(private)
@@ -60,13 +60,14 @@ func (s *Server) Addr() net.Addr {
 }
 
 func (s *Server) Close() error {
-	if s.listener != nil {
-		err := s.listener.Close()
-		if err != nil {
-			return errors.New(fmt.Sprintf("Could not close server listener (%s)", err))
-		} else {
-			s.listener = nil
-		}
+	if s.closed {
+		log.Warnf("Server close called multiple times")
+	}
+	s.closed = true
+
+	err := s.listener.Close()
+	if err != nil {
+		return fmt.Errorf("Could not close server listener (%s)", err)
 	}
 
 	return nil
@@ -83,7 +84,7 @@ func (s *Server) Wait() error {
 func (s *Server) Start() error {
 	listener, err := net.Listen("tcp", s.listenAddress)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Failed to listen on %s (%s)", s.listenAddress, err))
+		return fmt.Errorf("Failed to listen on %s (%s)", s.listenAddress, err)
 	}
 	s.listener = listener
 

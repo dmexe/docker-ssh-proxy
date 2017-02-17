@@ -36,14 +36,14 @@ func (p *JwtParser) Parse(token string) (*Payload, error) {
 
 	claims := parsed.Claims.(jwt.MapClaims)
 
-	containerId := claims["cid"]
+	containerID := claims["cid"]
 	containerEnv := claims["env"]
 	containerLabel := claims["lab"]
 
 	payload := &Payload{}
 
-	if containerId != nil {
-		payload.ContainerId = containerId.(string)
+	if containerID != nil {
+		payload.ContainerID = containerID.(string)
 	}
 
 	if containerEnv != nil {
