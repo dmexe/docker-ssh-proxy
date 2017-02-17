@@ -3,6 +3,7 @@ package main
 import (
 	"daemon/agent"
 	"daemon/payload"
+	"daemon/sshd"
 	"flag"
 	log "github.com/Sirupsen/logrus"
 )
@@ -27,7 +28,7 @@ func main() {
 		log.Debug("Debug output enabled")
 	}
 
-	jwtPayload, err := payload.NewJwtParserFromEnv()
+	jwtParser, err := payload.NewJwtParserFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -37,8 +38,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	server, err := NewSshServer(privateKeyFile, listenAddress, func() (agent.Handler, error) {
-		return agent.NewDockerHandler(dockerClient, jwtPayload)
+	server, err := sshd.NewServer(privateKeyFile, listenAddress, func(payload string) (agent.Handler, error) {
+		filter, err := jwtParser.Parse(payload)
+		if err != nil {
+			return nil, err
+		}
+		return agent.NewDockerHandler(dockerClient, filter)
 	})
 
 	if err != nil {

@@ -16,26 +16,22 @@ type DockerHandler struct {
 	container *docker.Container
 	exec      *docker.Exec
 	closer    docker.CloseWaiter
+	filter    *payload.Request
 }
 
 func NewDockerClient() (*docker.Client, error) {
 	return docker.NewClientFromEnv()
 }
 
-func NewDockerHandler(client *docker.Client, parser payload.Parser) (*DockerHandler, error) {
+func NewDockerHandler(client *docker.Client, filter *payload.Request) (*DockerHandler, error) {
 	handler := &DockerHandler{
 		cli:    client,
-		parser: parser,
+		filter: filter,
 	}
 	return handler, nil
 }
 
 func (h *DockerHandler) Handle(req *HandleRequest) error {
-	filter, err := h.parser.Parse(req.Payload)
-	if err != nil {
-		return err
-	}
-
 	containers, err := h.cli.ListContainers(docker.ListContainersOptions{})
 	if err != nil {
 		return err
@@ -49,23 +45,19 @@ func (h *DockerHandler) Handle(req *HandleRequest) error {
 			return err
 		}
 
-		if h.isMatched(filter, inspect) {
+		if h.isMatched(inspect) {
 			matched = inspect
 			break
 		}
 	}
 
 	if matched == nil {
-		return errors.New(fmt.Sprintf("Could not found container for %+v", filter))
+		return errors.New(fmt.Sprintf("Could not found container for %+v", h.filter))
 	}
 
 	log.Debugf("Found container %s", matched.ID[:10])
 
 	return h.execCommand(matched, req)
-}
-
-func (h *DockerHandler) IsStarted() bool {
-	return h.exec != nil
 }
 
 func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequest) error {
@@ -91,7 +83,7 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 	}
 	h.exec = exec
 
-	log.Debugf("Container exec successfuly created %s", exec.ID[:10])
+	log.Debugf("Container session successfuly created %s", exec.ID[:10])
 
 	success := make(chan struct{}, 1)
 	started := make(chan error, 1)
@@ -102,7 +94,7 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 			success <- struct{}{}
 			started <- nil
 		case <-time.After(3 * time.Second):
-			started <- errors.New("Could not wait exec within 3 seconds")
+			started <- errors.New("Could not wait session within 3 seconds")
 		}
 	}()
 
@@ -133,7 +125,7 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 		}
 	}
 
-	log.Debugf("Container exec successfuly started %s", exec.ID[:10])
+	log.Infof("Container session successfuly started %s", exec.ID[:10])
 
 	if req.Tty != nil {
 		if err := h.Resize(req.Tty.Resize()); err != nil {
@@ -146,23 +138,22 @@ func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequ
 
 func (h *DockerHandler) Wait() error {
 	if h.closer != nil {
-		log.Debug("Starting wait for container exec response")
+		log.Debug("Starting wait for container session response")
 		if err := h.closer.Wait(); err != nil {
-			return errors.New(fmt.Sprintf("Could wait container exec (%s)", err))
+			return errors.New(fmt.Sprintf("Could wait container session (%s)", err))
 		}
 	}
 	return nil
 }
 
-func (h *DockerHandler) isMatched(filter *payload.Request, container *docker.Container) bool {
-	if filter.ContainerId != "" && strings.HasPrefix(container.ID, filter.ContainerId) {
+func (h *DockerHandler) isMatched(container *docker.Container) bool {
+	if h.filter.ContainerId != "" && strings.HasPrefix(container.ID, h.filter.ContainerId) {
 		return true
 	}
 
-	if filter.ContainerEnv != "" {
+	if h.filter.ContainerEnv != "" {
 		for _, env := range container.Config.Env {
-			log.Infof("env (%s) [%s]", container.Name, env)
-			if env == filter.ContainerEnv {
+			if env == h.filter.ContainerEnv {
 				return true
 			}
 		}
@@ -187,11 +178,11 @@ func (h *DockerHandler) Close() error {
 	if h.exec != nil && h.closer != nil {
 		err := h.closer.Close()
 		if err != nil {
-			return errors.New(fmt.Sprintf("Could not close container exec (%s)", err))
+			return errors.New(fmt.Sprintf("Could not close container session (%s)", err))
 		}
 
 		h.exec = nil
-		log.Debugf("Container exec successfuly closed")
+		log.Info("Container session successfuly closed")
 	}
 
 	return nil

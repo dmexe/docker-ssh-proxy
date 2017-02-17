@@ -19,7 +19,7 @@ vet:
 	go vet $(PACKAGES)
 
 test:
-	go test -v daemon/agent
+	go test -p 2 -v $(PACKAGES)
 
 run: all $(ID_RSA)
 	bin/daemon -k $(ID_RSA) -d

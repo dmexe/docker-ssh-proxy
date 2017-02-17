@@ -9,8 +9,8 @@ import (
 	"path"
 	"runtime"
 	"testing"
-	"time"
 	"testing/iotest"
+	"time"
 )
 
 func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnv(t *testing.T) {
@@ -24,9 +24,8 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnv(t *testing.T) {
 	filter := &payload.Request{
 		ContainerEnv: "FOO=bar",
 	}
-	parser := payload.NewTestingParser(filter, nil)
 
-	handler := NewTestDockerHandler(t, parser)
+	handler := NewTestDockerHandler(t, cli, filter)
 	defer CloseTestDockerHandler(t, handler)
 
 	tty := &TtyRequest{
@@ -38,24 +37,22 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnv(t *testing.T) {
 	var writeBytes bytes.Buffer
 	var readBytes bytes.Buffer
 
-	writeBytes.WriteString("\n")
+	writeBytes.WriteString("\n\n\n")
 
 	handleReq := &HandleRequest{
 		Tty:     tty,
 		Reader:  iotest.NewReadLogger("[r]: ", &writeBytes),
 		Writer:  iotest.NewWriteLogger("[w]: ", &readBytes),
-		Payload: "",
 	}
 
 	require.NoError(t, handler.Handle(handleReq))
 	require.NoError(t, handler.Resize(handleReq.Tty.Resize()))
-	require.True(t, handler.IsStarted())
 
 	time.Sleep(3 * time.Second)
 
 	require.NoError(t, handler.Close())
 	require.NotEmpty(t, readBytes.String())
-	require.Equal(t,"/ # \x1b[6n", readBytes.String())
+	require.Equal(t, "/ # \x1b[6n", readBytes.String())
 
 	require.NoError(t, handler.Wait())
 }
@@ -117,12 +114,8 @@ func NewTestDockerClient(t *testing.T) *docker.Client {
 	return cli
 }
 
-func NewTestDockerHandler(t *testing.T, parser payload.Parser) *DockerHandler {
-	cli, err := NewDockerClient()
-	require.NoError(t, err)
-	require.NotNil(t, cli)
-
-	handler, err := NewDockerHandler(cli, parser)
+func NewTestDockerHandler(t *testing.T, cli *docker.Client, filter *payload.Request) *DockerHandler {
+	handler, err := NewDockerHandler(cli, filter)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 

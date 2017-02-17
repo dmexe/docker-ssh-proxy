@@ -16,21 +16,19 @@ type TtyRequest struct {
 }
 
 type HandleRequest struct {
-	Payload string
-	Tty     *TtyRequest
-	Reader  io.Reader
-	Writer  io.Writer
+	Tty    *TtyRequest
+	Reader io.Reader
+	Writer io.Writer
 }
 
 type Handler interface {
 	Handle(req *HandleRequest) error
-	IsStarted() bool
-	Wait() error
 	Resize(tty *ResizeRequest) error
+	Wait() error
 	Close() error
 }
 
-type CreateHandler func() (Handler, error)
+type CreateHandler func(payload string) (Handler, error)
 
 func (req *TtyRequest) Resize() *ResizeRequest {
 	return &ResizeRequest{

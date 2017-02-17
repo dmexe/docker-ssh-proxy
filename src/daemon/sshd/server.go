@@ -1,4 +1,4 @@
-package main
+package sshd
 
 import (
 	"daemon/agent"
@@ -10,13 +10,13 @@ import (
 	"net"
 )
 
-type SshServer struct {
+type Server struct {
 	config        *ssh.ServerConfig
 	listenAddress string
 	createAgent   agent.CreateHandler
 }
 
-func NewSshServer(privateKeyFile string, listenAddress string, agentCreateFn agent.CreateHandler) (*SshServer, error) {
+func NewServer(privateKeyFile string, listenAddress string, agentCreateFn agent.CreateHandler) (*Server, error) {
 	config := &ssh.ServerConfig{
 		NoClientAuth: true,
 	}
@@ -33,7 +33,7 @@ func NewSshServer(privateKeyFile string, listenAddress string, agentCreateFn age
 
 	config.AddHostKey(private)
 
-	server := &SshServer{
+	server := &Server{
 		config:        config,
 		listenAddress: listenAddress,
 		createAgent:   agentCreateFn,
@@ -42,7 +42,7 @@ func NewSshServer(privateKeyFile string, listenAddress string, agentCreateFn age
 	return server, nil
 }
 
-func (s *SshServer) Start() error {
+func (s *Server) Start() error {
 	listener, err := net.Listen("tcp", s.listenAddress)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Failed to listen on %s (%s)", s.listenAddress, err))
@@ -63,19 +63,26 @@ func (s *SshServer) Start() error {
 			continue
 		}
 
-		clientHandler := &SshClientHandler{
-			sshConn:     sshConn,
+		clientHandler := &Session{
+			conn:        sshConn,
 			newChannels: chans,
 			requests:    reqs,
 			createAgent: s.createAgent,
 		}
 
-		log.Printf("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
+		log.Infof("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
 
 		if err := clientHandler.Handle(); err != nil {
-			log.Errorf("Could not handle client requests (%s)", err)
-			clientHandler.CloseConn()
+			log.Errorf("Could not handle client connection (%s)", err)
+			s.closeClient(sshConn)
 			continue
 		}
 	}
+}
+
+func (s *Server) closeClient(sshConn ssh.Conn) {
+	if err := sshConn.Close(); err != nil {
+		log.Errorf("Could not handle client connection (%s)", err)
+	}
+	log.Info("Client connection successfully closed")
 }
