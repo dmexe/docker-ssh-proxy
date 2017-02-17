@@ -19,8 +19,20 @@ esac
 
 if [ ! -f ${govendor_path} ] ; then
   url=https://github.com/kardianos/govendor/releases/download/v${govendor_version}/govendor_${platform}_${arch}
-  echo "Downloading ${url}"
+  echo "Downloading ${url}..."
   curl -o ${govendor_path} --fail -L --silent ${url}
   chmod +x ${govendor_path}
   echo "OK"
 fi
+
+function go_pkg() {
+  local exec=$1
+  local url=$2
+  which ${exec} > /dev/null || (
+    echo "Installing ${exec} from ${url}..."
+    go get -v -u ${url}
+    echo "OK"
+  )
+}
+
+go_pkg golint github.com/golang/lint/golint

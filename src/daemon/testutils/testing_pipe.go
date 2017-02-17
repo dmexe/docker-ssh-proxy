@@ -6,15 +6,17 @@ import (
 	"time"
 	"errors"
 	"io"
+	"sync"
 )
 
 type TestingPipe struct {
+	sync.RWMutex
 	ReadIn *io.PipeReader
 	ReadOut *io.PipeWriter
 	WriteIn *io.PipeReader
 	WriteOut *io.PipeWriter
-	ReadCompleted chan error
 	Bytes bytes.Buffer
+	readComplete chan error
 }
 
 func NewTestingPipe() *TestingPipe {
@@ -26,7 +28,7 @@ func NewTestingPipe() *TestingPipe {
 		ReadOut: readOut,
 		WriteIn: writeIn,
 		WriteOut: writeOut,
-		ReadCompleted: make(chan error),
+		readComplete: make(chan error),
 	}
 
 	pipe.readAsync()
@@ -47,13 +49,56 @@ func (p *TestingPipe) IoWriter() io.Writer {
 
 func (p *TestingPipe) readAsync() {
 	go func() {
-		_, err := p.Bytes.ReadFrom(p.ReadIn)
-		p.ReadCompleted <- err
+		buf := make([]byte, 128)
+		for {
+			sz, err := p.ReadIn.Read(buf)
+			if err != nil && err.Error() == "EOF" {
+				p.readComplete <- nil
+				return
+			}
+			if err != nil {
+				p.readComplete <- err
+				return
+			}
+
+			p.Lock()
+			p.Bytes.Write(buf[0:sz])
+			p.Unlock()
+		}
 	}()
 }
 
 func (p *TestingPipe) WaitStringReceived(str string) error {
-	return WaitForStringAppearedInBuffer(str, &p.Bytes)
+	finished := make(chan bool)
+	defer close(finished)
+
+	go func() {
+		for {
+			select {
+			case <- time.After(100 * time.Millisecond):
+				p.RLock()
+				if strings.Contains(p.Bytes.String(), str) {
+					p.RUnlock()
+					finished <- true
+					return
+				}
+				p.RUnlock()
+			}
+		}
+	}()
+
+	select {
+	case err := <-p.readComplete:
+		if err != nil {
+			return err
+		}
+	case <-finished:
+		return nil
+	case <-time.After(10 * time.Second):
+		return errors.New("Could wait response within 10 seconds")
+	}
+
+	return nil
 }
 
 func (p *TestingPipe) SendString(str string) error {
@@ -69,28 +114,5 @@ func (p *TestingPipe) SendString(str string) error {
 		return err
 	case <- time.After(3 * time.Second):
 		return errors.New("Could wait write response within 3 seconds")
-	}
-}
-
-func WaitForStringAppearedInBuffer(str string, bb *bytes.Buffer) error {
-	complete := make(chan bool)
-	defer close(complete)
-
-	go func() {
-		for {
-			if strings.Contains(bb.String(), str) {
-				complete <- true
-				break
-			} else {
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
-	}()
-
-	select {
-	case <-complete:
-		return nil
-	case <-time.After(10 * time.Second):
-		return errors.New("Could wait response within 10 seconds")
 	}
 }

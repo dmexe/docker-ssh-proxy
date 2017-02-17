@@ -5,17 +5,20 @@ import (
 	"io"
 )
 
+// EchoHandlerErrors keeps all error request types
 type EchoHandlerErrors struct {
 	Handle error
 	Wait   error
 	Close  error
 }
 
+// EchoHandler used only in tests
 type EchoHandler struct {
 	completed chan error
 	errors    EchoHandlerErrors
 }
 
+// NewEchoHandler creates a new handler
 func NewEchoHandler(errors EchoHandlerErrors) *EchoHandler {
 	return &EchoHandler{
 		completed: make(chan error),
@@ -23,6 +26,7 @@ func NewEchoHandler(errors EchoHandlerErrors) *EchoHandler {
 	}
 }
 
+// Handle request, just copy stdin to stdout
 func (h *EchoHandler) Handle(req *Request) error {
 	go func() {
 		_, err := io.Copy(req.Stdout, req.Stdin)
@@ -45,10 +49,12 @@ func (h *EchoHandler) Handle(req *Request) error {
 	return nil
 }
 
+// Resize nothing
 func (h *EchoHandler) Resize(tty *Resize) error {
 	return nil
 }
 
+// Wait until copy of io streams finished
 func (h *EchoHandler) Wait() (Response, error) {
 	if h.errors.Wait != nil {
 		return Response{Code: 1}, h.errors.Wait
@@ -64,6 +70,7 @@ func (h *EchoHandler) Wait() (Response, error) {
 	return Response{Code: 1}, nil
 }
 
+// Close nothing
 func (h *EchoHandler) Close() error {
 	if h.errors.Close != nil {
 		return h.errors.Close

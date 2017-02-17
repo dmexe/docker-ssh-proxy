@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -e
+set -o pipefail
+
+function resolve_base_dir() {
+  local base=$(dirname $(dirname $0))
+  pushd $base > /dev/null
+  base=$(pwd)
+  popd > /dev/null
+  echo $base
+}
+
+function usage() {
+  echo "$0 [-c workdir] args..."
+  exit 1
+}
+
+base=$(resolve_base_dir)
+workdir=${base}
+
+if [ "$1" = "-c" ] && [ -n "$2" ] ; then
+  workdir=${base}/${2}
+  shift ; shift
+fi
+
+if [ -z "$1" ] ; then
+  usage
+fi
+
+export GOPATH=${base}
+cd ${workdir}
+
+eval $(printf "%q " "$@")

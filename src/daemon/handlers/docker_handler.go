@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+// DockerHandler implements docker ssh handler, with spawn docker exec by given payload
+// it support both tty and non tty requests.
+// TODO: implement proper exit code handler
+// TODO: implement proper signal status handler
 type DockerHandler struct {
 	cli       *docker.Client
 	container *docker.Container
@@ -19,10 +23,12 @@ type DockerHandler struct {
 	closed    bool
 }
 
+// NewDockerClient is an alias for docker.NewClientFromEnv
 func NewDockerClient() (*docker.Client, error) {
 	return docker.NewClientFromEnv()
 }
 
+// NewDockerHandler creates handler for docker requests
 func NewDockerHandler(client *docker.Client, payload *payloads.Payload) (*DockerHandler, error) {
 	handler := &DockerHandler{
 		cli:     client,
@@ -31,6 +37,7 @@ func NewDockerHandler(client *docker.Client, payload *payloads.Payload) (*Docker
 	return handler, nil
 }
 
+// Handle given request, looking for container and start docker exec
 func (h *DockerHandler) Handle(req *Request) error {
 	containers, err := h.cli.ListContainers(docker.ListContainersOptions{})
 	if err != nil {
@@ -144,6 +151,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 	return nil
 }
 
+// Wait until docker exec finished
 func (h *DockerHandler) Wait() (Response, error) {
 	if h.closer != nil {
 		log.Debug("Starting wait for container session response")
@@ -202,6 +210,7 @@ func (h *DockerHandler) isMatched(container *docker.Container) bool {
 	return false
 }
 
+// Resize tty, ignored if current request haven't tty
 func (h *DockerHandler) Resize(req *Resize) error {
 	if req != nil && h.session != nil {
 		err := h.cli.ResizeExecTTY(h.session.ID, int(req.Height), int(req.Width))
@@ -213,6 +222,7 @@ func (h *DockerHandler) Resize(req *Resize) error {
 	return nil
 }
 
+// Close docker exec session
 func (h *DockerHandler) Close() error {
 	if h.closed {
 		log.Warnf("Close session called multiple times")

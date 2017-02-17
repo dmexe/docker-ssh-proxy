@@ -3,19 +3,21 @@ package sshd
 import (
 	"daemon/handlers"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"io/ioutil"
 	"net"
 	"strings"
 )
 
+// CreateServerOptions keeps parameters for server instance
 type CreateServerOptions struct {
 	PrivateKeyFile  string
 	PrivateKeyBytes []byte
 	ListenAddr      string
 }
 
+// Server implements sshd server
 type Server struct {
 	config        *ssh.ServerConfig
 	listenAddress string
@@ -23,9 +25,11 @@ type Server struct {
 	listener      net.Listener
 	completed     chan error
 	closed        bool
+	log           *logrus.Entry
 }
 
-func NewServer(opts CreateServerOptions, agentCreateFn handlers.HandlerFunc) (*Server, error) {
+// NewServer creates a new sshd server instance using given options and session handlers constructor
+func NewServer(opts CreateServerOptions, handlerFurn handlers.HandlerFunc) (*Server, error) {
 	config := &ssh.ServerConfig{
 		NoClientAuth: true,
 	}
@@ -48,20 +52,23 @@ func NewServer(opts CreateServerOptions, agentCreateFn handlers.HandlerFunc) (*S
 	server := &Server{
 		config:        config,
 		listenAddress: opts.ListenAddr,
-		handlerFunc:   agentCreateFn,
+		handlerFunc:   handlerFurn,
 		completed:     make(chan error),
+		log:           logrus.WithField("logger", "sshd.server"),
 	}
 
 	return server, nil
 }
 
+// Addr returns listening addr
 func (s *Server) Addr() net.Addr {
 	return s.listener.Addr()
 }
 
+// Close server listener
 func (s *Server) Close() error {
 	if s.closed {
-		log.Warnf("Server close called multiple times")
+		s.log.Warnf("Server close called multiple times")
 	}
 	s.closed = true
 
@@ -73,14 +80,16 @@ func (s *Server) Close() error {
 	return nil
 }
 
+// Wait until server stops
 func (s *Server) Wait() error {
 	select {
 	case err := <-s.completed:
-		log.Infof("Server completed")
+		s.log.Infof("Server completed")
 		return err
 	}
 }
 
+// Start server
 func (s *Server) Start() error {
 	listener, err := net.Listen("tcp", s.listenAddress)
 	if err != nil {
@@ -88,11 +97,11 @@ func (s *Server) Start() error {
 	}
 	s.listener = listener
 
-	log.Printf("Listening on %s...", s.listenAddress)
+	s.log.Printf("Listening on %s...", s.listenAddress)
 
 	go func() {
 		defer func() {
-			log.Debugf("Stop accepting incoming connections")
+			s.log.Debugf("Stop accepting incoming connections")
 			s.completed <- nil
 		}()
 
@@ -103,28 +112,29 @@ func (s *Server) Start() error {
 				if strings.HasSuffix(err.Error(), "use of closed network connection") {
 					break
 				}
-				log.Errorf("Failed to accept incoming connection (%s)", err)
+				s.log.Errorf("Failed to accept incoming connection (%s)", err)
 				break
 			}
 
 			sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, s.config)
 			if err != nil {
-				log.Errorf("Failed to handshake (%s)", err)
+				s.log.Errorf("Failed to handshake (%s)", err)
 				continue
 			}
 
-			clientHandler := &Session{
-				conn:        sshConn,
-				newChannels: chans,
-				requests:    reqs,
-				handlerFunc: s.handlerFunc,
-			}
+			s.log.Infof("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
 
-			log.Infof("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
+			session := NewSession(&CreateSessionOptions{
+				Conn:        sshConn,
+				NewChannels: chans,
+				Requests:    reqs,
+				HandlerFunc: s.handlerFunc,
+				Log:         s.log,
+			})
 
-			if err := clientHandler.Handle(); err != nil {
-				log.Errorf("Could not handle client connection (%s)", err)
-				s.closeClient(sshConn)
+			if err := session.Handle(); err != nil {
+				s.log.Errorf("Could not handle client connection (%s)", err)
+				s.closeSession(sshConn)
 				continue
 			}
 		}
@@ -133,9 +143,9 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func (s *Server) closeClient(sshConn ssh.Conn) {
+func (s *Server) closeSession(sshConn ssh.Conn) {
 	if err := sshConn.Close(); err != nil {
-		log.Errorf("Could not handle client connection (%s)", err)
+		s.log.Errorf("Could not handle client connection (%s)", err)
 	}
-	log.Info("Client connection successfully closed")
+	s.log.Info("Client connection successfully closed")
 }

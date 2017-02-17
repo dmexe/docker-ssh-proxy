@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"testing"
 	"testing/iotest"
+	"time"
 )
 
 func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
@@ -43,6 +44,9 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 	}
 
 	require.NoError(t, handler.Handle(handleReq))
+
+	// Wait until shell session started, otherwise sometimes got docker error 'containerd: process not found for container'
+	time.Sleep(100 * time.Millisecond)
 	require.NoError(t, handler.Resize(handleReq.Tty.Resize()))
 
 	pipe.SendString("echo term is $TERM\n")
@@ -211,14 +215,16 @@ func NewTestDockerContainer(t *testing.T, cli *docker.Client, env string, labels
 		},
 	}
 	container, err := cli.CreateContainer(createOptions)
-	require.NoError(t, err)
+	require.NoError(t, err, name)
 	require.NotNil(t, container)
 
 	err = cli.StartContainer(container.ID, &docker.HostConfig{})
 	if err != nil {
 		RemoveTestDockerContainer(t, cli, container)
 	}
-	require.NoError(t, err)
+	require.NoError(t, err, name)
+
+	t.Logf("Container successfully created (%s)", name)
 
 	return container
 }
