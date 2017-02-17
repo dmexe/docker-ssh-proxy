@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bytes"
 	"daemon/payload"
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
@@ -11,6 +10,9 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
+	"io"
+	"bytes"
+	"strings"
 )
 
 func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnv(t *testing.T) {
@@ -34,27 +36,64 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnv(t *testing.T) {
 		Height: 40,
 	}
 
-	var writeBytes bytes.Buffer
-	var readBytes bytes.Buffer
+	readIn, readOut := io.Pipe()
+	writeIn, writeOut := io.Pipe()
 
-	writeBytes.WriteString("\n\n\n")
+	var bb bytes.Buffer
+	go func() {
+		_, err := bb.ReadFrom(readIn)
+		if err != nil {
+			t.Errorf("Could read from pipe (%s)", err)
+		}
+	}()
 
 	handleReq := &HandleRequest{
 		Tty:     tty,
-		Reader:  iotest.NewReadLogger("[r]: ", &writeBytes),
-		Writer:  iotest.NewWriteLogger("[w]: ", &readBytes),
+		Reader:  iotest.NewReadLogger("[r]: ", writeIn),
+		Writer:  iotest.NewWriteLogger("[w]: ", readOut),
 	}
 
 	require.NoError(t, handler.Handle(handleReq))
 	require.NoError(t, handler.Resize(handleReq.Tty.Resize()))
 
-	time.Sleep(3 * time.Second)
+	writeLine := func(s string) {
+		go writeOut.Write([]byte(s + "\n"))
+		time.Sleep(1 * time.Second)
+	}
+
+	writeLine("echo term is $TERM")
+	writeLine("echo uname is $(uname)")
+	writeLine("echo complete.")
+
+	complete := make(chan bool)
+
+	go func() {
+		for {
+			if strings.Contains(bb.String(), "complete.") {
+				complete <- true
+				break
+			} else {
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	}()
+
+	select {
+	case <-complete:
+		break
+	case <-time.After(10 * time.Second):
+		t.Error("Could wait response within 10 seconds")
+	}
 
 	require.NoError(t, handler.Close())
-	require.NotEmpty(t, readBytes.String())
-	require.Equal(t, "/ # \x1b[6n", readBytes.String())
 
 	require.NoError(t, handler.Wait())
+
+	require.Contains(t, bb.String(), "echo term is $TERM\r\n")
+	require.Contains(t, bb.String(), "term is xterm\r\n")
+
+	require.Contains(t, bb.String(), "echo uname is $(uname)\r\n")
+	require.Contains(t, bb.String(), "uname is Linux\r\n")
 }
 
 func CloseTestDockerHandler(t *testing.T, handler *DockerHandler) {
