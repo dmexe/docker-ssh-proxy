@@ -1,4 +1,4 @@
-package payload
+package payloads
 
 import (
 	"github.com/dgrijalva/jwt-go"
@@ -14,22 +14,22 @@ func Test_JwtParser_shouldSuccessfullyParseValidToken(t *testing.T) {
 		"lab": "clabel",
 	})
 	parser := NewTestJwtParser(t)
-	parsed, err := parser.Parse(token)
+	payload, err := parser.Parse(token)
 
 	require.NoError(t, err)
-	require.NotNil(t, parsed)
+	require.NotNil(t, payload)
 
-	require.Equal(t, parsed.ContainerId, "cid")
-	require.Equal(t, parsed.ContainerLabel, "clabel")
-	require.Equal(t, parsed.ContainerEnv, "cenv")
+	require.Equal(t, payload.ContainerId, "cid")
+	require.Equal(t, payload.ContainerLabel, "clabel")
+	require.Equal(t, payload.ContainerEnv, "cenv")
 }
 
 func Test_JwtParser_shouldFailOnInvalidToken(t *testing.T) {
 	parser := NewTestJwtParser(t)
-	parsed, err := parser.Parse("")
+	payload, err := parser.Parse("")
 
 	require.Error(t, err)
-	require.Nil(t, parsed)
+	require.Nil(t, payload)
 }
 
 func Test_JwtParser_shouldFailOnExpiredToken(t *testing.T) {

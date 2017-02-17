@@ -1,11 +1,11 @@
-package payload
+package payloads
 
-type Request struct {
+type Payload struct {
 	ContainerId    string
 	ContainerEnv   string
 	ContainerLabel string
 }
 
 type Parser interface {
-	Parse(string) (*Request, error)
+	Parse(string) (*Payload, error)
 }

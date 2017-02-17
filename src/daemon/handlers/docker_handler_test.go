@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"daemon/payload"
+	"daemon/payloads"
 	"daemon/testutils"
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
@@ -20,11 +20,11 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 	})
 	defer RemoveTestDockerContainer(t, cli, container)
 
-	filter := &payload.Request{
+	payload := &payloads.Payload{
 		ContainerId: container.ID,
 	}
 
-	handler := NewTestDockerHandler(t, cli, filter)
+	handler := NewTestDockerHandler(t, cli, payload)
 	defer CloseTestDockerHandler(t, handler)
 
 	tty := &Tty{
@@ -68,11 +68,11 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T)
 	container := NewTestDockerContainer(t, cli, "FOO=bar", map[string]string{})
 	defer RemoveTestDockerContainer(t, cli, container)
 
-	filter := &payload.Request{
+	payload := &payloads.Payload{
 		ContainerId: container.ID,
 	}
 
-	handler := NewTestDockerHandler(t, cli, filter)
+	handler := NewTestDockerHandler(t, cli, payload)
 	defer CloseTestDockerHandler(t, handler)
 
 	pipe := testutils.NewTestingPipe()
@@ -101,8 +101,8 @@ func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
 	})
 	defer RemoveTestDockerContainer(t, cli, container)
 
-	simpleHandler := func(t *testing.T, filter *payload.Request) {
-		handler := NewTestDockerHandler(t, cli, filter)
+	simpleHandler := func(t *testing.T, payload *payloads.Payload) {
+		handler := NewTestDockerHandler(t, cli, payload)
 		defer CloseTestDockerHandler(t, handler)
 
 		pipe := testutils.NewTestingPipe()
@@ -123,19 +123,19 @@ func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
 	}
 
 	t.Run("container.ID", func(t *testing.T) {
-		simpleHandler(t, &payload.Request{
+		simpleHandler(t, &payloads.Payload{
 			ContainerId: container.ID,
 		})
 	})
 
 	t.Run("container.Env", func(t *testing.T) {
-		simpleHandler(t, &payload.Request{
+		simpleHandler(t, &payloads.Payload{
 			ContainerEnv: "ENV_NAME=envValue",
 		})
 	})
 
 	t.Run("container.Label", func(t *testing.T) {
-		simpleHandler(t, &payload.Request{
+		simpleHandler(t, &payloads.Payload{
 			ContainerLabel: "labelName=labelValue",
 		})
 	})
@@ -146,8 +146,8 @@ func Test_DockerHandler_shouldFailToHandleRequests(t *testing.T) {
 	container := NewTestDockerContainer(t, cli, "FOO=BAR", map[string]string{})
 	defer RemoveTestDockerContainer(t, cli, container)
 
-	simpleHandler := func(t *testing.T, filter *payload.Request, expect string) {
-		handler := NewTestDockerHandler(t, cli, filter)
+	simpleHandler := func(t *testing.T, payload *payloads.Payload, expect string) {
+		handler := NewTestDockerHandler(t, cli, payload)
 		defer CloseTestDockerHandler(t, handler)
 
 		pipe := testutils.NewTestingPipe()
@@ -164,13 +164,13 @@ func Test_DockerHandler_shouldFailToHandleRequests(t *testing.T) {
 		require.Contains(t, err.Error(), expect)
 		require.NoError(t, handler.Close())
 
-		code, err := handler.Wait()
+		resp, err := handler.Wait()
 		require.Error(t, err)
-		require.Equal(t, 1, code)
+		require.Equal(t, 1, resp.Code)
 	}
 
 	t.Run("container not found", func(t *testing.T) {
-		simpleHandler(t, &payload.Request{ContainerId: "notFound"}, "Could not found container for ")
+		simpleHandler(t, &payloads.Payload{ContainerId: "notFound"}, "Could not found container for ")
 	})
 }
 
@@ -232,8 +232,8 @@ func NewTestDockerClient(t *testing.T) *docker.Client {
 	return cli
 }
 
-func NewTestDockerHandler(t *testing.T, cli *docker.Client, filter *payload.Request) *DockerHandler {
-	handler, err := NewDockerHandler(cli, filter)
+func NewTestDockerHandler(t *testing.T, cli *docker.Client, payload *payloads.Payload) *DockerHandler {
+	handler, err := NewDockerHandler(cli, payload)
 
 	require.NoError(t, err)
 	require.NotNil(t, handler)

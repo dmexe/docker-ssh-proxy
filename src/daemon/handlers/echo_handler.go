@@ -49,19 +49,19 @@ func (h *EchoHandler) Resize(tty *Resize) error {
 	return nil
 }
 
-func (h *EchoHandler) Wait() (int, error) {
+func (h *EchoHandler) Wait() (Response, error) {
 	if h.errors.Wait != nil {
-		return 1, h.errors.Wait
+		return Response{Code: 1}, h.errors.Wait
 	}
 
 	select {
 	case err := <-h.completed:
 		if err != nil {
-			return 1, err
+			return Response{Code: 1}, err
 		}
 	}
 
-	return 0, nil
+	return Response{Code: 1}, nil
 }
 
 func (h *EchoHandler) Close() error {

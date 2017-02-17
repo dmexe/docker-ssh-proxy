@@ -73,7 +73,7 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 				switch req.Type {
 
 				case "exec", "shell":
-					s.handleAgentReq(req, channel)
+					s.handleCommandReq(req, channel)
 
 				case "pty-req":
 					s.handleTtyReq(req)
@@ -120,7 +120,7 @@ func (s *Session) handleResizeReq(req *ssh.Request) {
 	reqReply(req, true)
 }
 
-func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
+func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
 	if s.handled {
 		log.Warn("'exec' request called multiple times")
 		reqReply(req, false)
@@ -138,7 +138,7 @@ func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
 	if req.Type == "exec" {
 		execReq, err := reqParseExecPayload(req.Payload)
 		if err != nil {
-			log.Errorf("Could not parse request payload (%s)", err)
+			log.Errorf("Could not parse request payloads (%s)", err)
 			reqReply(req, false)
 			return
 		}
@@ -164,11 +164,11 @@ func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
 	log.Debugf("Request successfully handled")
 
 	go func() {
-		code, err := sessionHandler.Wait()
+		resp, err := sessionHandler.Wait()
 		if err != nil {
 			log.Errorf("Could not wait handler (%s)", err)
 		}
-		s.exitChannel(channel, uint32(code))
+		s.exitChannel(channel, uint32(resp.Code))
 	}()
 
 }

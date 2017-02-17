@@ -1,7 +1,7 @@
 GOVENDOR := $(shell pwd)/bin/govendor
 DAEMON   := $(shell pwd)/bin/daemon
 ID_RSA   := $(shell pwd)/bin/id_rsa
-PACKAGES := daemon daemon/handlers daemon/payload daemon/sshd
+PACKAGES := daemon daemon/handlers daemon/payloads daemon/sshd
 
 export GOPATH := $(shell pwd)
 

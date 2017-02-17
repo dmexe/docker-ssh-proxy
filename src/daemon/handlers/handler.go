@@ -23,10 +23,14 @@ type Request struct {
 	Exec   string
 }
 
+type Response struct {
+	Code int
+}
+
 type Handler interface {
 	Handle(req *Request) error
 	Resize(tty *Resize) error
-	Wait() (int, error)
+	Wait() (Response, error)
 	Close() error
 }
 

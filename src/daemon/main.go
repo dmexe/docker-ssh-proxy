@@ -2,7 +2,7 @@ package main
 
 import (
 	"daemon/handlers"
-	"daemon/payload"
+	"daemon/payloads"
 	"daemon/sshd"
 	"flag"
 	log "github.com/Sirupsen/logrus"
@@ -37,7 +37,7 @@ func main() {
 		log.Debug("Debug output enabled")
 	}
 
-	jwtParser, err := payload.NewJwtParserFromEnv()
+	jwtParser, err := payloads.NewJwtParserFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -47,12 +47,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	handler := func(payload string) (handlers.Handler, error) {
-		filter, err := jwtParser.Parse(payload)
+	handler := func(exec string) (handlers.Handler, error) {
+		payload, err := jwtParser.Parse(exec)
 		if err != nil {
 			return nil, err
 		}
-		return handlers.NewDockerHandler(dockerClient, filter)
+		return handlers.NewDockerHandler(dockerClient, payload)
 	}
 
 	serverOptions := sshd.CreateServerOptions{

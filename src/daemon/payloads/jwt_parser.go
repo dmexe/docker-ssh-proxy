@@ -1,4 +1,4 @@
-package payload
+package payloads
 
 import (
 	jwt "github.com/dgrijalva/jwt-go"
@@ -25,7 +25,7 @@ func NewJwtParserFromEnv() (*JwtParser, error) {
 	return NewJwtParser(secret)
 }
 
-func (p *JwtParser) Parse(token string) (*Request, error) {
+func (p *JwtParser) Parse(token string) (*Payload, error) {
 	parsed, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
 		return []byte(p.secret), nil
 	})
@@ -40,19 +40,19 @@ func (p *JwtParser) Parse(token string) (*Request, error) {
 	containerEnv := claims["env"]
 	containerLabel := claims["lab"]
 
-	filter := &Request{}
+	payload := &Payload{}
 
 	if containerId != nil {
-		filter.ContainerId = containerId.(string)
+		payload.ContainerId = containerId.(string)
 	}
 
 	if containerEnv != nil {
-		filter.ContainerEnv = containerEnv.(string)
+		payload.ContainerEnv = containerEnv.(string)
 	}
 
 	if containerLabel != nil {
-		filter.ContainerLabel = containerLabel.(string)
+		payload.ContainerLabel = containerLabel.(string)
 	}
 
-	return filter, nil
+	return payload, nil
 }
