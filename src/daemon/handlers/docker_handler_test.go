@@ -1,4 +1,4 @@
-package agent
+package handlers
 
 import (
 	"daemon/payload"
@@ -27,7 +27,7 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 	handler := NewTestDockerHandler(t, cli, filter)
 	defer CloseTestDockerHandler(t, handler)
 
-	tty := &TtyRequest{
+	tty := &Tty{
 		Term:   "xterm",
 		Width:  120,
 		Height: 40,
@@ -35,7 +35,7 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 
 	pipe := testutils.NewTestingPipe()
 
-	handleReq := &HandleRequest{
+	handleReq := &Request{
 		Tty:    tty,
 		Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
 		Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
@@ -77,7 +77,7 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T)
 
 	pipe := testutils.NewTestingPipe()
 
-	handleReq := &HandleRequest{
+	handleReq := &Request{
 		Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
 		Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
 		Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
@@ -107,7 +107,7 @@ func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
 
 		pipe := testutils.NewTestingPipe()
 
-		handleReq := &HandleRequest{
+		handleReq := &Request{
 			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
 			Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
 			Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
@@ -152,7 +152,7 @@ func Test_DockerHandler_shouldFailToHandleRequests(t *testing.T) {
 
 		pipe := testutils.NewTestingPipe()
 
-		handleReq := &HandleRequest{
+		handleReq := &Request{
 			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
 			Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
 			Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),

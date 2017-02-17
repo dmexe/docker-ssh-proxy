@@ -2,7 +2,7 @@ package sshd
 
 import (
 	"bytes"
-	"daemon/agent"
+	"daemon/handlers"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -38,7 +38,7 @@ func reqParseExecPayload(b []byte) ([]byte, error) {
 	return execBytes, nil
 }
 
-func reqParseWinchPayload(b []byte) (*agent.ResizeRequest, error) {
+func reqParseWinchPayload(b []byte) (*handlers.Resize, error) {
 	if len(b) < 8 {
 		return nil, errors.New(
 			fmt.Sprintf("Could not read 'window-change' request, expected buffer len >= 8, got=%d",
@@ -49,7 +49,7 @@ func reqParseWinchPayload(b []byte) (*agent.ResizeRequest, error) {
 	width := binary.BigEndian.Uint32(b)
 	height := binary.BigEndian.Uint32(b[4:])
 
-	req := &agent.ResizeRequest{
+	req := &handlers.Resize{
 		Width:  width,
 		Height: height,
 	}
@@ -57,7 +57,7 @@ func reqParseWinchPayload(b []byte) (*agent.ResizeRequest, error) {
 	return req, nil
 }
 
-func reqParseTtyPayload(b []byte) (*agent.TtyRequest, error) {
+func reqParseTtyPayload(b []byte) (*handlers.Tty, error) {
 	buffer := bytes.NewBuffer(b)
 	termLenBytes := buffer.Next(4)
 	if len(termLenBytes) != 4 {
@@ -81,7 +81,7 @@ func reqParseTtyPayload(b []byte) (*agent.TtyRequest, error) {
 		return nil, err
 	}
 
-	req := &agent.TtyRequest{
+	req := &handlers.Tty{
 		Term:   string(termBytes),
 		Width:  resize.Width,
 		Height: resize.Height,

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"daemon/agent"
+	"daemon/handlers"
 	"daemon/payload"
 	"daemon/sshd"
 	"flag"
@@ -42,17 +42,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dockerClient, err := agent.NewDockerClient()
+	dockerClient, err := handlers.NewDockerClient()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	handler := func(payload string) (agent.Handler, error) {
+	handler := func(payload string) (handlers.Handler, error) {
 		filter, err := jwtParser.Parse(payload)
 		if err != nil {
 			return nil, err
 		}
-		return agent.NewDockerHandler(dockerClient, filter)
+		return handlers.NewDockerHandler(dockerClient, filter)
 	}
 
 	serverOptions := sshd.CreateServerOptions{

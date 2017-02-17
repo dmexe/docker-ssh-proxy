@@ -1,7 +1,7 @@
 package sshd
 
 import (
-	"daemon/agent"
+	"daemon/handlers"
 	"daemon/testutils"
 	"errors"
 	"github.com/stretchr/testify/require"
@@ -14,7 +14,7 @@ import (
 )
 
 func Test_Session_shouldSuccessfullyHandleRequests(t *testing.T) {
-	server := NewTestServer(t, NewEchoHandler(agent.EchoHandlerErrors{}))
+	server := NewTestServer(t, NewEchoHandler(handlers.EchoHandlerErrors{}))
 	defer CloseTestServer(t, server)
 
 	t.Run("interactive", func(t *testing.T) {
@@ -44,7 +44,7 @@ func Test_Session_shouldSuccessfullyHandleRequests(t *testing.T) {
 func Test_Session_shouldFailToCreateRequest(t *testing.T) {
 	testErr := errors.New("boom!")
 
-	failHandler := func(_ string) (agent.Handler, error) {
+	failHandler := func(_ string) (handlers.Handler, error) {
 		return nil, testErr
 	}
 
@@ -61,7 +61,7 @@ func Test_Session_shouldFailToCreateRequest(t *testing.T) {
 func Test_Session_shouldFailToHandleRequest(t *testing.T) {
 	boom := errors.New("boom!")
 
-	server := NewTestServer(t, NewEchoHandler(agent.EchoHandlerErrors{
+	server := NewTestServer(t, NewEchoHandler(handlers.EchoHandlerErrors{
 		Handle: boom,
 	}))
 	defer CloseTestServer(t, server)
@@ -76,7 +76,7 @@ func Test_Session_shouldFailToHandleRequest(t *testing.T) {
 func Test_Session_shouldFailToWaitAgent(t *testing.T) {
 	boom := errors.New("boom!")
 
-	server := NewTestServer(t, NewEchoHandler(agent.EchoHandlerErrors{
+	server := NewTestServer(t, NewEchoHandler(handlers.EchoHandlerErrors{
 		Wait: boom,
 	}))
 	defer CloseTestServer(t, server)
@@ -97,9 +97,9 @@ func Test_Session_shouldFailToWaitAgent(t *testing.T) {
 	require.Equal(t, "EOF", err.Error())
 }
 
-func NewEchoHandler(errors agent.EchoHandlerErrors) agent.CreateHandler {
-	return func(_ string) (agent.Handler, error) {
-		return agent.NewEchoHandler(errors), nil
+func NewEchoHandler(errors handlers.EchoHandlerErrors) handlers.HandlerFunc {
+	return func(_ string) (handlers.Handler, error) {
+		return handlers.NewEchoHandler(errors), nil
 	}
 }
 
@@ -164,7 +164,7 @@ func CloseTestServer(t *testing.T, server *Server) {
 	}
 }
 
-func NewTestServer(t *testing.T, handler agent.CreateHandler) *Server {
+func NewTestServer(t *testing.T, handler handlers.HandlerFunc) *Server {
 	opts := CreateServerOptions{
 		ListenAddr:      "localhost:0",
 		PrivateKeyBytes: testutils.NewRsaPrivateKey(),

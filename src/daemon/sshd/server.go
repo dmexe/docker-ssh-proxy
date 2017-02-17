@@ -1,7 +1,7 @@
 package sshd
 
 import (
-	"daemon/agent"
+	"daemon/handlers"
 	"errors"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
@@ -20,12 +20,12 @@ type CreateServerOptions struct {
 type Server struct {
 	config        *ssh.ServerConfig
 	listenAddress string
-	createAgent   agent.CreateHandler
+	handlerFunc   handlers.HandlerFunc
 	listener      net.Listener
 	completed     chan error
 }
 
-func NewServer(opts CreateServerOptions, agentCreateFn agent.CreateHandler) (*Server, error) {
+func NewServer(opts CreateServerOptions, agentCreateFn handlers.HandlerFunc) (*Server, error) {
 	config := &ssh.ServerConfig{
 		NoClientAuth: true,
 	}
@@ -48,7 +48,7 @@ func NewServer(opts CreateServerOptions, agentCreateFn agent.CreateHandler) (*Se
 	server := &Server{
 		config:        config,
 		listenAddress: opts.ListenAddr,
-		createAgent:   agentCreateFn,
+		handlerFunc:   agentCreateFn,
 		completed:     make(chan error),
 	}
 
@@ -116,7 +116,7 @@ func (s *Server) Start() error {
 				conn:        sshConn,
 				newChannels: chans,
 				requests:    reqs,
-				createAgent: s.createAgent,
+				handlerFunc: s.handlerFunc,
 			}
 
 			log.Infof("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())

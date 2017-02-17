@@ -1,4 +1,4 @@
-package agent
+package handlers
 
 import (
 	log "github.com/Sirupsen/logrus"
@@ -23,7 +23,7 @@ func NewEchoHandler(errors EchoHandlerErrors) *EchoHandler {
 	}
 }
 
-func (h *EchoHandler) Handle(req *HandleRequest) error {
+func (h *EchoHandler) Handle(req *Request) error {
 	go func() {
 		_, err := io.Copy(req.Stdout, req.Stdin)
 		if err != nil {
@@ -45,7 +45,7 @@ func (h *EchoHandler) Handle(req *HandleRequest) error {
 	return nil
 }
 
-func (h *EchoHandler) Resize(tty *ResizeRequest) error {
+func (h *EchoHandler) Resize(tty *Resize) error {
 	return nil
 }
 

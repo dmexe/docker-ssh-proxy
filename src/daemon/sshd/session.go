@@ -1,7 +1,7 @@
 package sshd
 
 import (
-	"daemon/agent"
+	"daemon/handlers"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
@@ -13,9 +13,9 @@ type Session struct {
 	conn        *ssh.ServerConn
 	newChannels <-chan ssh.NewChannel
 	requests    <-chan *ssh.Request
-	createAgent agent.CreateHandler
-	agentTty    *agent.TtyRequest
-	agent       agent.Handler
+	handlerFunc handlers.HandlerFunc
+	handlerTty  *handlers.Tty
+	handler     handlers.Handler
 	handled     bool
 	exited      bool
 	closed      bool
@@ -92,13 +92,13 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 }
 
 func (s *Session) handleResizeReq(req *ssh.Request) {
-	if s.agentTty == nil {
+	if s.handlerTty == nil {
 		log.Warn("'window-change' request called before 'tty-req' request")
 		reqReply(req, false)
 		return
 	}
 
-	if s.agent == nil {
+	if s.handler == nil {
 		log.Warn("'window-changed' request called without 'exec' request")
 		reqReply(req, false)
 		return
@@ -111,7 +111,7 @@ func (s *Session) handleResizeReq(req *ssh.Request) {
 		return
 	}
 
-	if err := s.agent.Resize(resize); err != nil {
+	if err := s.handler.Resize(resize); err != nil {
 		log.Errorf("Could not handle 'window-change' request (%s)", err)
 		reqReply(req, false)
 		return
@@ -126,9 +126,10 @@ func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
 		reqReply(req, false)
 		return
 	}
+	s.handled = true
 
-	handleRequest := &agent.HandleRequest{
-		Tty:    s.agentTty,
+	handleRequest := &handlers.Request{
+		Tty:    s.handlerTty,
 		Stdin:  channel.(io.Reader),
 		Stdout: channel.(io.Writer),
 		Stderr: channel.Stderr(),
@@ -144,27 +145,26 @@ func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
 		handleRequest.Exec = string(execReq)
 	}
 
-	agentHandler, err := s.createAgent(s.conn.User())
+	sessionHandler, err := s.handlerFunc(s.conn.User())
 	if err != nil {
-		log.Errorf("Could not create agent (%s)", err)
+		log.Errorf("Could not create handlers (%s)", err)
 		reqReply(req, false)
 		return
 	}
 
-	if err := agentHandler.Handle(handleRequest); err != nil {
+	if err := sessionHandler.Handle(handleRequest); err != nil {
 		log.Errorf("Could not handle request (%s)", err)
 		reqReply(req, false)
 		return
 	}
 
-	s.agent = agentHandler
-	s.handled = true
+	s.handler = sessionHandler
 	reqReply(req, true)
 
 	log.Debugf("Request successfully handled")
 
 	go func() {
-		code, err := agentHandler.Wait()
+		code, err := sessionHandler.Wait()
 		if err != nil {
 			log.Errorf("Could not wait handler (%s)", err)
 		}
@@ -174,7 +174,7 @@ func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
 }
 
 func (s *Session) handleTtyReq(req *ssh.Request) {
-	if s.agentTty != nil {
+	if s.handlerTty != nil {
 		log.Warnf("'tty-req' request called multiple times")
 		return
 	}
@@ -186,7 +186,7 @@ func (s *Session) handleTtyReq(req *ssh.Request) {
 		return
 	}
 
-	s.agentTty = tty
+	s.handlerTty = tty
 	reqReply(req, true)
 }
 
@@ -214,9 +214,9 @@ func (s *Session) closeChannel(channel ssh.Channel) {
 	}
 	s.closed = true
 
-	if s.agent != nil {
-		if err := s.agent.Close(); err != nil {
-			log.Errorf("Could not close agent (%s)", err)
+	if s.handler != nil {
+		if err := s.handler.Close(); err != nil {
+			log.Errorf("Could not close handlers (%s)", err)
 		} else {
 			log.Debugf("Agent successfuly closed")
 		}

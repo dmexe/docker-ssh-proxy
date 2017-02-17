@@ -1,4 +1,4 @@
-package agent
+package handlers
 
 import (
 	"daemon/payload"
@@ -12,7 +12,6 @@ import (
 
 type DockerHandler struct {
 	cli       *docker.Client
-	parser    payload.Parser
 	container *docker.Container
 	exec      *docker.Exec
 	closer    docker.CloseWaiter
@@ -32,7 +31,7 @@ func NewDockerHandler(client *docker.Client, filter *payload.Request) (*DockerHa
 	return handler, nil
 }
 
-func (h *DockerHandler) Handle(req *HandleRequest) error {
+func (h *DockerHandler) Handle(req *Request) error {
 	containers, err := h.cli.ListContainers(docker.ListContainersOptions{})
 	if err != nil {
 		return err
@@ -59,7 +58,7 @@ func (h *DockerHandler) Handle(req *HandleRequest) error {
 	return h.execCommand(matched, req)
 }
 
-func (h *DockerHandler) execCommand(container *docker.Container, req *HandleRequest) error {
+func (h *DockerHandler) execCommand(container *docker.Container, req *Request) error {
 
 	h.container = container
 
@@ -212,7 +211,7 @@ func (h *DockerHandler) isMatched(container *docker.Container) bool {
 	return false
 }
 
-func (h *DockerHandler) Resize(req *ResizeRequest) error {
+func (h *DockerHandler) Resize(req *Resize) error {
 	if req != nil && h.exec != nil {
 		err := h.cli.ResizeExecTTY(h.exec.ID, int(req.Height), int(req.Width))
 		if err != nil {
