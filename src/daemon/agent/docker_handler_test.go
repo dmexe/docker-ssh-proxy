@@ -1,18 +1,18 @@
 package agent
 
 import (
+	"bytes"
 	"daemon/payload"
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/stretchr/testify/require"
+	"io"
 	"path"
 	"runtime"
+	"strings"
 	"testing"
 	"testing/iotest"
 	"time"
-	"io"
-	"bytes"
-	"strings"
 )
 
 func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnv(t *testing.T) {
@@ -48,9 +48,9 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnv(t *testing.T) {
 	}()
 
 	handleReq := &HandleRequest{
-		Tty:     tty,
-		Reader:  iotest.NewReadLogger("[r]: ", writeIn),
-		Writer:  iotest.NewWriteLogger("[w]: ", readOut),
+		Tty:    tty,
+		Reader: iotest.NewReadLogger("[r]: ", writeIn),
+		Writer: iotest.NewWriteLogger("[w]: ", readOut),
 	}
 
 	require.NoError(t, handler.Handle(handleReq))

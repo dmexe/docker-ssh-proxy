@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -e
+
+govendor_path=bin/govendor
+govendor_version=1.0.8
+
+platform=$(uname -s | tr '[:upper:]' '[:lower:]')
+
+case $(uname -m) in
+  x86_64)
+    arch=amd64
+    ;;
+  *)
+    echo "unknown arch $(uname -m)"
+    exit 1
+    ;;
+esac
+
+if [ ! -f ${govendor_path} ] ; then
+  url=https://github.com/kardianos/govendor/releases/download/v${govendor_version}/govendor_${platform}_${arch}
+  echo "Downloading ${url}"
+  curl -o ${govendor_path} --fail -L --silent ${url}
+  chmod +x ${govendor_path}
+  echo "OK"
+fi

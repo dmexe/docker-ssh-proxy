@@ -1,6 +1,8 @@
 /pkg/
-/src/daemon/vendor
+/src/daemon/vendor/*/
 /src/github.com
-/bin/
+/bin/govendor
+/bin/daemon
+/bin/id_rsa*
 /.cache/
 /.idea/

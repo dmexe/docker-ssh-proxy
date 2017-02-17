@@ -27,8 +27,11 @@ run: all $(ID_RSA)
 $(ID_RSA):
 	ssh-keygen -t rsa -P '' -C '' -f $(ID_RSA)
 
-$(GOVENDOR):
-	go get -u github.com/kardianos/govendor
+deps:
+	bin/install-deps
+	(cd src/daemon ; $(GOVENDOR) sync)
 
-deps: $(GOVENDOR)
-	(cd src/daemon ; $(GOVENDOR) fetch +missing)
+pkg.list:
+	bin/install-deps
+	(cd src/daemon ; $(GOVENDOR) list)
+
