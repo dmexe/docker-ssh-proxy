@@ -1,13 +1,13 @@
 package sshd
 
 import (
-	"golang.org/x/crypto/ssh"
-	log "github.com/Sirupsen/logrus"
 	"bytes"
-	"fmt"
-	"errors"
-	"encoding/binary"
 	"daemon/agent"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	log "github.com/Sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
 )
 
 func reqReply(req *ssh.Request, value bool) {
@@ -43,7 +43,7 @@ func reqParseWinchPayload(b []byte) (*agent.ResizeRequest, error) {
 		return nil, errors.New(
 			fmt.Sprintf("Could not read 'window-change' request, expected buffer len >= 8, got=%d",
 				len(b),
-		))
+			))
 	}
 
 	width := binary.BigEndian.Uint32(b)

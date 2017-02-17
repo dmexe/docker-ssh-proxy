@@ -1,22 +1,18 @@
 package agent
 
 import (
-	"bytes"
 	"daemon/payload"
+	"daemon/testutils"
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/stretchr/testify/require"
-	"io"
 	"path"
 	"runtime"
-	"strings"
 	"testing"
 	"testing/iotest"
-	"time"
-	"errors"
 )
 
-func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnvWithTty(t *testing.T) {
+func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 	cli := NewTestDockerClient(t)
 
 	container := NewTestDockerContainer(t, cli, "FOO=bar", map[string]string{
@@ -25,7 +21,7 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnvWithTty(t *testi
 	defer RemoveTestDockerContainer(t, cli, container)
 
 	filter := &payload.Request{
-		ContainerEnv: "FOO=bar",
+		ContainerId: container.ID,
 	}
 
 	handler := NewTestDockerHandler(t, cli, filter)
@@ -37,45 +33,33 @@ func Test_DockerHandler_shouldSuccessfullyAttachToContainerByEnvWithTty(t *testi
 		Height: 40,
 	}
 
-	readIn, readOut := io.Pipe()
-	writeIn, writeOut := io.Pipe()
-
-	var bb bytes.Buffer
-	go func() {
-		_, err := bb.ReadFrom(readIn)
-		require.NoError(t, err)
-	}()
+	pipe := testutils.NewTestingPipe()
 
 	handleReq := &HandleRequest{
 		Tty:    tty,
-		Reader: iotest.NewReadLogger("[r]: ", writeIn),
-		Writer: iotest.NewWriteLogger("[w]: ", readOut),
+		Reader: iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+		Writer: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
 	}
 
 	require.NoError(t, handler.Handle(handleReq))
 	require.NoError(t, handler.Resize(handleReq.Tty.Resize()))
 
-	writeLine := func(s string) {
-		go writeOut.Write([]byte(s + "\n"))
-		time.Sleep(1 * time.Second)
-	}
+	pipe.SendString("echo term is $TERM\n")
+	pipe.SendString("echo uname is $(uname)\n")
+	pipe.SendString("echo complete.\n")
 
-	writeLine("echo term is $TERM")
-	writeLine("echo uname is $(uname)")
-	writeLine("echo complete.")
-
-	require.NoError(t, waitForBytesStringAppearedInBuffer("complete.", &bb))
+	require.NoError(t, pipe.WaitStringReceived("complete."))
 	require.NoError(t, handler.Close())
 	require.NoError(t, handler.Wait())
 
-	require.Contains(t, bb.String(), "echo term is $TERM\r\n")
-	require.Contains(t, bb.String(), "term is xterm\r\n")
+	require.Contains(t, pipe.String(), "echo term is $TERM\r\n")
+	require.Contains(t, pipe.String(), "term is xterm\r\n")
 
-	require.Contains(t, bb.String(), "echo uname is $(uname)\r\n")
-	require.Contains(t, bb.String(), "uname is Linux\r\n")
+	require.Contains(t, pipe.String(), "echo uname is $(uname)\r\n")
+	require.Contains(t, pipe.String(), "uname is Linux\r\n")
 }
 
-func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveCommand(t *testing.T) {
+func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T) {
 	cli := NewTestDockerClient(t)
 
 	container := NewTestDockerContainer(t, cli, "FOO=bar", map[string]string{})
@@ -88,50 +72,95 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveCommand(t *testing.T)
 	handler := NewTestDockerHandler(t, cli, filter)
 	defer CloseTestDockerHandler(t, handler)
 
-	readIn, readOut := io.Pipe()
-	writeIn, _ := io.Pipe()
-
-	var bb bytes.Buffer
-	go func() {
-		_, err := bb.ReadFrom(readIn)
-		require.NoError(t, err)
-	}()
+	pipe := testutils.NewTestingPipe()
 
 	handleReq := &HandleRequest{
-		Reader: iotest.NewReadLogger("[r]: ", writeIn),
-		Writer: iotest.NewWriteLogger("[w]: ", readOut),
-		Exec: "ls -la ; echo complete.",
+		Reader: iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+		Writer: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+		Exec:   "ls -la ; echo complete.",
 	}
 
 	require.NoError(t, handler.Handle(handleReq))
-	require.NoError(t, waitForBytesStringAppearedInBuffer("complete.", &bb))
+	require.NoError(t, pipe.WaitStringReceived("complete."))
 	require.NoError(t, handler.Close())
 	require.NoError(t, handler.Wait())
 
-	require.Contains(t, bb.String(), "linuxrc -> /bin/busybox")
+	require.Contains(t, pipe.String(), "linuxrc -> /bin/busybox")
 }
 
-func waitForBytesStringAppearedInBuffer(str string, bb *bytes.Buffer) error {
-	complete := make(chan bool)
-	defer close(complete)
+func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
+	cli := NewTestDockerClient(t)
+	container := NewTestDockerContainer(t, cli, "ENV_NAME=envValue", map[string]string{
+		"labelName": "labelValue",
+	})
+	defer RemoveTestDockerContainer(t, cli, container)
 
-	go func() {
-		for {
-			if strings.Contains(bb.String(), str) {
-				complete <- true
-				break
-			} else {
-				time.Sleep(100 * time.Millisecond)
-			}
+	simpleHandler := func(t *testing.T, filter *payload.Request) {
+		handler := NewTestDockerHandler(t, cli, filter)
+		defer CloseTestDockerHandler(t, handler)
+
+		pipe := testutils.NewTestingPipe()
+
+		handleReq := &HandleRequest{
+			Reader: iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+			Writer: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Exec:   "echo complete.",
 		}
-	}()
 
-	select {
-	case <-complete:
-		return nil
-	case <-time.After(10 * time.Second):
-		return errors.New("Could wait response within 10 seconds")
+		require.NoError(t, handler.Handle(handleReq))
+		require.NoError(t, pipe.WaitStringReceived("complete."))
+		require.NoError(t, handler.Close())
+		require.NoError(t, handler.Wait())
 	}
+
+	t.Run("container.ID", func(t *testing.T) {
+		simpleHandler(t, &payload.Request{
+			ContainerId: container.ID,
+		})
+	})
+
+	t.Run("container.Env", func(t *testing.T) {
+		simpleHandler(t, &payload.Request{
+			ContainerEnv: "ENV_NAME=envValue",
+		})
+	})
+
+	t.Run("container.Label", func(t *testing.T) {
+		simpleHandler(t, &payload.Request{
+			ContainerLabel: "labelName=labelValue",
+		})
+	})
+}
+
+func Test_DockerHandler_shouldFailToHandleRequest(t *testing.T) {
+	cli := NewTestDockerClient(t)
+	container := NewTestDockerContainer(t, cli, "FOO=BAR", map[string]string{})
+	defer RemoveTestDockerContainer(t, cli, container)
+
+	simpleHandler := func(t *testing.T, filter *payload.Request, expect string) {
+		handler := NewTestDockerHandler(t, cli, filter)
+		defer CloseTestDockerHandler(t, handler)
+
+		pipe := testutils.NewTestingPipe()
+
+		handleReq := &HandleRequest{
+			Reader: iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+			Writer: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Exec:   "true",
+		}
+
+		err := handler.Handle(handleReq)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), expect)
+		require.NoError(t, handler.Close())
+		require.NoError(t, handler.Wait())
+	}
+
+	t.Run("container not found", func(t *testing.T) {
+		simpleHandler(t, &payload.Request{
+			ContainerId: "notFound",
+		}, "Could not found container for ")
+	})
 }
 
 func CloseTestDockerHandler(t *testing.T, handler *DockerHandler) {
@@ -185,6 +214,7 @@ func NewTestDockerContainer(t *testing.T, cli *docker.Client, env string, labels
 
 func NewTestDockerClient(t *testing.T) *docker.Client {
 	cli, err := NewDockerClient()
+
 	require.NoError(t, err)
 	require.NotNil(t, cli)
 
@@ -193,6 +223,7 @@ func NewTestDockerClient(t *testing.T) *docker.Client {
 
 func NewTestDockerHandler(t *testing.T, cli *docker.Client, filter *payload.Request) *DockerHandler {
 	handler, err := NewDockerHandler(cli, filter)
+
 	require.NoError(t, err)
 	require.NotNil(t, handler)
 

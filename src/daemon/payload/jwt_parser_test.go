@@ -9,8 +9,8 @@ import (
 
 func Test_JwtParser_shouldSuccessfullyParseValidToken(t *testing.T) {
 	token := NewTestJwtToken(t, jwt.MapClaims{
-		"cid":    "cid",
-		"env":   "cenv",
+		"cid": "cid",
+		"env": "cenv",
 		"lab": "clabel",
 	})
 	parser := NewTestJwtParser(t)

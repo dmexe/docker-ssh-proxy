@@ -1,11 +1,9 @@
 GOVENDOR := $(shell pwd)/bin/govendor
 DAEMON   := $(shell pwd)/bin/daemon
 ID_RSA   := $(shell pwd)/bin/id_rsa
-PACKAGES := daemon daemon/agent daemon/payload daemon/utils
+PACKAGES := daemon daemon/agent daemon/payload daemon/sshd
 
 export GOPATH := $(shell pwd)
-
-.PHONY: all build fmt vet run deps
 
 all: build
 
@@ -18,7 +16,7 @@ build: fmt vet
 vet:
 	go vet $(PACKAGES)
 
-test:
+test: fmt vet
 	go test -p 2 -v $(PACKAGES)
 
 run: all $(ID_RSA)

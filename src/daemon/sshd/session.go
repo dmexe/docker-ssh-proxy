@@ -127,9 +127,9 @@ func (s *Session) handleAgentReq(req *ssh.Request, channel ssh.Channel) {
 	}
 
 	handleRequest := &agent.HandleRequest{
-		Tty:     s.agentTty,
-		Reader:  channel.(io.Reader),
-		Writer:  channel.(io.Writer),
+		Tty:    s.agentTty,
+		Reader: channel.(io.Reader),
+		Writer: channel.(io.Writer),
 	}
 
 	if req.Type == "exec" {

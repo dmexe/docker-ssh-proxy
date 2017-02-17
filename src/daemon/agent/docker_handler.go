@@ -52,7 +52,7 @@ func (h *DockerHandler) Handle(req *HandleRequest) error {
 	}
 
 	if matched == nil {
-		return errors.New(fmt.Sprintf("Could not found container for %+v", h.filter))
+		return errors.New(fmt.Sprintf("Could not found container for %v", h.filter))
 	}
 
 	log.Debugf("Found container %s", matched.ID[:10])
@@ -161,14 +161,34 @@ func (h *DockerHandler) Wait() error {
 }
 
 func (h *DockerHandler) isMatched(container *docker.Container) bool {
-	if h.filter.ContainerId != "" && strings.HasPrefix(container.ID, h.filter.ContainerId) {
+	if container.ID == h.filter.ContainerId {
+		log.Debugf("Match container by ID=%s", container.ID)
 		return true
 	}
 
 	if h.filter.ContainerEnv != "" {
 		for _, env := range container.Config.Env {
 			if env == h.filter.ContainerEnv {
+				log.Debugf("Match container by env %s", env)
 				return true
+			}
+		}
+	}
+
+	if h.filter.ContainerLabel != "" {
+		fields := strings.FieldsFunc(h.filter.ContainerLabel, func(r rune) bool {
+			return r == '='
+		})
+
+		if len(fields) == 2 {
+			fieldName := fields[0]
+			fieldValue := fields[1]
+
+			for name, value := range container.Config.Labels {
+				if name == fieldName && value == fieldValue {
+					log.Debugf("Match container by label %s=%s", name, value)
+					return true
+				}
 			}
 		}
 	}
