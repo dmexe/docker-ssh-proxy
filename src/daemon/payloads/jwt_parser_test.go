@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func Test_JwtParser_shouldSuccessfullyParseValidToken(t *testing.T) {
+func Test_JwtParser_shouldParseValidToken(t *testing.T) {
 	token := newTestJwtToken(t, jwt.MapClaims{
 		"cid": "cid",
 		"env": "cenv",
@@ -24,7 +24,7 @@ func Test_JwtParser_shouldSuccessfullyParseValidToken(t *testing.T) {
 	require.Equal(t, payload.ContainerEnv, "cenv")
 }
 
-func Test_JwtParser_shouldFailOnInvalidToken(t *testing.T) {
+func Test_JwtParser_failOnInvalidToken(t *testing.T) {
 	parser := newTestJwtParser(t)
 	payload, err := parser.Parse("")
 
@@ -32,7 +32,7 @@ func Test_JwtParser_shouldFailOnInvalidToken(t *testing.T) {
 	require.Nil(t, payload)
 }
 
-func Test_JwtParser_shouldFailOnExpiredToken(t *testing.T) {
+func Test_JwtParser_failOnExpiredToken(t *testing.T) {
 	token := newTestJwtToken(t, jwt.MapClaims{
 		"exp": time.Now().Add(-1 * time.Second).Unix(),
 	})

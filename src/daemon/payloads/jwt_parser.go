@@ -1,8 +1,6 @@
 package payloads
 
 import (
-	"daemon/utils"
-	"github.com/Sirupsen/logrus"
 	jwt "github.com/dgrijalva/jwt-go"
 	"os"
 )
@@ -13,9 +11,7 @@ import (
 // * env - container environment variable (eg. FOO=bar)
 // * lab - container label
 type JwtParser struct {
-	*utils.LogEntry
 	secret string
-	log    *logrus.Entry
 }
 
 const (
@@ -27,8 +23,7 @@ const (
 // NewJwtParser constructs a new parser instance using given JWT secret
 func NewJwtParser(secret string) (*JwtParser, error) {
 	config := &JwtParser{
-		secret:   secret,
-		LogEntry: utils.NewLogEntry("parser.jwt"),
+		secret: secret,
 	}
 	return config, nil
 }

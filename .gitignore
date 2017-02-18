@@ -2,7 +2,7 @@
 /src/daemon/vendor/*/
 /src/github.com
 /bin/govendor
-/bin/daemon
+/bin/daemon*
 /bin/id_rsa*
 /.cache/
 /.idea/

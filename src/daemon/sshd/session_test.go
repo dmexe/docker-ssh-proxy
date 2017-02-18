@@ -11,10 +11,12 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
+	"encoding/binary"
+	"fmt"
 )
 
-func Test_Session_shouldSuccessfullyHandleRequests(t *testing.T) {
-	server := newTestServer(t, NewEchoHandler(handlers.EchoHandlerErrors{}))
+func Test_Session_shouldHandleRequests(t *testing.T) {
+	server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{}))
 	defer closeTestServer(t, server)
 
 	t.Run("interactive", func(t *testing.T) {
@@ -23,25 +25,28 @@ func Test_Session_shouldSuccessfullyHandleRequests(t *testing.T) {
 
 		require.NoError(t, requestTty(session))
 
-		pipe := SetupSessionPipe(t, session)
+		pipe := setupSessionPipe(t, session)
 
 		require.NoError(t, session.Shell())
+
 		pipe.SendString("complete.\n")
 		require.NoError(t, pipe.WaitString("complete."))
+
+		require.NoError(t, requestResize(session))
 	})
 
 	t.Run("non interactive", func(t *testing.T) {
 		session, closer := newTestSession(t, server.Addr(), "username")
 		defer closer.Close()
 
-		pipe := SetupSessionPipe(t, session)
+		pipe := setupSessionPipe(t, session)
 
 		require.NoError(t, session.Start("echo complete."))
 		require.NoError(t, pipe.WaitString("complete."))
 	})
 }
 
-func Test_Session_shouldFailToCreateShell(t *testing.T) {
+func Test_Session_failToCreateShell(t *testing.T) {
 	testErr := errors.New("boom")
 
 	failHandler := func(_ string) (handlers.Handler, error) {
@@ -58,10 +63,10 @@ func Test_Session_shouldFailToCreateShell(t *testing.T) {
 	require.Error(t, session.Shell())
 }
 
-func Test_Session_shouldFailToHandleRequest(t *testing.T) {
+func Test_Session_failToHandleRequest(t *testing.T) {
 	boom := errors.New("boom")
 
-	server := newTestServer(t, NewEchoHandler(handlers.EchoHandlerErrors{
+	server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
 		Handle: boom,
 	}))
 	defer closeTestServer(t, server)
@@ -73,10 +78,10 @@ func Test_Session_shouldFailToHandleRequest(t *testing.T) {
 	require.Error(t, session.Shell())
 }
 
-func Test_Session_shouldFailToWaitHandler(t *testing.T) {
+func Test_Session_failToWaitHandler(t *testing.T) {
 	boom := errors.New("boom")
 
-	server := newTestServer(t, NewEchoHandler(handlers.EchoHandlerErrors{
+	server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
 		Wait: boom,
 	}))
 	defer closeTestServer(t, server)
@@ -97,13 +102,13 @@ func Test_Session_shouldFailToWaitHandler(t *testing.T) {
 	require.Equal(t, "EOF", err.Error())
 }
 
-func NewEchoHandler(errors handlers.EchoHandlerErrors) handlers.HandlerFunc {
+func newEchoHandler(errors handlers.EchoHandlerErrors) handlers.HandlerFunc {
 	return func(_ string) (handlers.Handler, error) {
 		return handlers.NewEchoHandler(errors), nil
 	}
 }
 
-func SetupSessionPipe(t *testing.T, s *ssh.Session) *utils.BytesBackedPipe {
+func setupSessionPipe(t *testing.T, s *ssh.Session) *utils.BytesBackedPipe {
 	pipe := utils.NewBytesBackedPipe()
 
 	stdin, err := s.StdinPipe()
@@ -123,6 +128,17 @@ func SetupSessionPipe(t *testing.T, s *ssh.Session) *utils.BytesBackedPipe {
 	go io.Copy(pipe.IoWriter(), iotest.NewReadLogger("[e]: ", stderr))
 
 	return pipe
+}
+
+func requestResize(s *ssh.Session) error {
+	bb := make([]byte, 8)
+	binary.BigEndian.PutUint32(bb, 120)
+	binary.BigEndian.PutUint32(bb, 80)
+	reply, err := s.SendRequest("window-change", true, bb)
+	if ! reply {
+		return fmt.Errorf("window-change request doesn't completed expected response=true, actual=%t", reply)
+	}
+	return err
 }
 
 func requestTty(s *ssh.Session) error {

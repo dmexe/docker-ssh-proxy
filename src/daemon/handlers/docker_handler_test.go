@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
+func Test_DockerHandler_shouldRunInteractiveSession(t *testing.T) {
 	cli := newTestDockerClient(t)
 
 	container := newTestDockerContainer(t, cli, "FOO=bar", map[string]string{
@@ -66,7 +66,7 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 	require.Contains(t, pipe.String(), "uname is Linux\r\n")
 }
 
-func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T) {
+func Test_DockerHandler_shouldRunNonInteractiveSession(t *testing.T) {
 	cli := newTestDockerClient(t)
 
 	container := newTestDockerContainer(t, cli, "FOO=bar", map[string]string{})
@@ -98,7 +98,7 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T)
 	require.Contains(t, pipe.String(), ".dockerenv\n")
 }
 
-func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
+func Test_DockerHandler_shouldFindContainers(t *testing.T) {
 	cli := newTestDockerClient(t)
 	container := newTestDockerContainer(t, cli, "ENV_NAME=envValue", map[string]string{
 		"labelName": "labelValue",
@@ -145,7 +145,7 @@ func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
 	})
 }
 
-func Test_DockerHandler_shouldFailToHandleRequests(t *testing.T) {
+func Test_DockerHandler_failToHandleRequests(t *testing.T) {
 	cli := newTestDockerClient(t)
 	container := newTestDockerContainer(t, cli, "FOO=BAR", map[string]string{})
 	defer removeTestDockerContainer(t, cli, container)

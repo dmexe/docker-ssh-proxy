@@ -1,9 +1,11 @@
-GOVENDOR := $(shell pwd)/bin/govendor
-DAEMON   := $(shell pwd)/bin/daemon
-ID_RSA   := $(shell pwd)/bin/id_rsa
-PACKAGES := daemon daemon/handlers daemon/payloads daemon/sshd daemon/utils
+GOVENDOR := bin/env -c src/daemon $(CURDIR)/bin/govendor
+DAEMON   := $(CURDIR)/bin/daemon
+ID_RSA   := $(CURDIR)/bin/id_rsa
+PACKAGES =  $(shell $(GOVENDOR) list -no-status +local)
+GOARCH   =  $(shell go env GOARCH)
 
-all: build
+
+all: build.dev
 
 fmt:
 	bin/env go fmt $(PACKAGES)
@@ -14,30 +16,34 @@ vet:
 lint:
 	bin/env golint -set_exit_status $(PACKAGES)
 
-build: fmt vet lint
-	bin/env go build -race -o $(DAEMON) daemon
+test: fmt vet lint
+	bin/env go test -cover -race -timeout 1m -v $(PACKAGES)
 
-test: fmt vet
-	bin/env go test -race -timeout 1m -v $(PACKAGES)
+build.dev: fmt vet lint
+	bin/env go build -race -v -o $(DAEMON) daemon
 
-run: all $(ID_RSA)
-	bin/daemon -sshd.pkey $(ID_RSA) -d
+build.release:
+	GOOS=linux  bin/env go build -ldflags "-s -w" -o $(DAEMON)-linux-$(GOARCH)  daemon
+	GOOS=darwin bin/env go build -ldflags "-s -w" -o $(DAEMON)-darwin-$(GOARCH) daemon
+
+run: build.dev $(ID_RSA)
+	bin/daemon -sshd.pkey $(ID_RSA) -debug
 
 deps:
 	bin/install-deps
-	bin/env -c src/daemon $(GOVENDOR) sync
+	$(GOVENDOR) sync
 
 pkg.list:
 	bin/install-deps
-	bin/env -c src/daemon $(GOVENDOR) list
+	$(GOVENDOR) list
 
 pkg.remove.unused:
 	bin/install-deps
-	bin/env -c src/daemon $(GOVENDOR) remove +unused
+	$(GOVENDOR) remove +unused
 
 pkg.fetch.missing:
 	bin/install-deps
-	bin/env -c src/daemon $(GOVENDOR) fetch -v +missing
+	$(GOVENDOR) fetch -v +missing
 
 $(ID_RSA):
 	ssh-keygen -t rsa -P '' -C '' -f $(ID_RSA)

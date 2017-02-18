@@ -2,28 +2,23 @@
 
 set -e
 
+goarch=$(go env GOARCH)
+goos=$(go env GOOS)
+
 govendor_path=bin/govendor
 govendor_version=1.0.8
+govendor_url=https://github.com/kardianos/govendor/releases/download/v${govendor_version}/govendor_${goos}_${goarch}
 
-platform=$(uname -s | tr '[:upper:]' '[:lower:]')
+function get_url() {
+  local path=$1
+  local url=$2
 
-case $(uname -m) in
-  x86_64)
-    arch=amd64
-    ;;
-  *)
-    echo "unknown arch $(uname -m)"
-    exit 1
-    ;;
-esac
-
-if [ ! -f ${govendor_path} ] ; then
-  url=https://github.com/kardianos/govendor/releases/download/v${govendor_version}/govendor_${platform}_${arch}
-  echo "Downloading ${url}..."
-  curl -o ${govendor_path} --fail -L --silent ${url}
-  chmod +x ${govendor_path}
-  echo "OK"
-fi
+  if [ ! -f $path ] ; then
+    echo "Downloading ${url} to ${path}..."
+    curl -o ${path} --fail -L -s ${url}
+    echo "OK"
+  fi
+}
 
 function go_pkg() {
   local exec=$1
@@ -35,4 +30,5 @@ function go_pkg() {
   )
 }
 
+get_url ${govendor_path} ${govendor_url} && chmod +x ${govendor_path}
 go_pkg golint github.com/golang/lint/golint
