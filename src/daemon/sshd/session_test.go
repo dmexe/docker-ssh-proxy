@@ -3,7 +3,9 @@ package sshd
 import (
 	"daemon/handlers"
 	"daemon/utils"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 	"io"
@@ -11,95 +13,92 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
-	"encoding/binary"
-	"fmt"
 )
 
-func Test_Session_shouldHandleRequests(t *testing.T) {
-	server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{}))
-	defer closeTestServer(t, server)
+func Test_Session(t *testing.T) {
 
-	t.Run("interactive", func(t *testing.T) {
+	t.Run("should successfuly", func(t *testing.T) {
+		server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{}))
+		defer closeTestServer(t, server)
+
+		t.Run("run interactive session", func(t *testing.T) {
+			session, closer := newTestSession(t, server.Addr(), "username")
+			defer closer.Close()
+
+			require.NoError(t, requestTty(session))
+
+			pipe := setupSessionPipe(t, session)
+
+			require.NoError(t, session.Shell())
+
+			pipe.SendString("complete.\n")
+			require.NoError(t, pipe.WaitString("complete."))
+
+			require.NoError(t, requestResize(session))
+		})
+
+		t.Run("run non interactive session", func(t *testing.T) {
+			session, closer := newTestSession(t, server.Addr(), "username")
+			defer closer.Close()
+
+			pipe := setupSessionPipe(t, session)
+
+			require.NoError(t, session.Start("echo complete."))
+			require.NoError(t, pipe.WaitString("complete."))
+		})
+	})
+
+	testErr := errors.New("boom")
+
+	t.Run("fail to create shell", func(t *testing.T) {
+		failHandler := func(_ string) (handlers.Handler, error) {
+			return nil, testErr
+		}
+
+		server := newTestServer(t, failHandler)
+		defer closeTestServer(t, server)
+
 		session, closer := newTestSession(t, server.Addr(), "username")
 		defer closer.Close()
 
 		require.NoError(t, requestTty(session))
-
-		pipe := setupSessionPipe(t, session)
-
-		require.NoError(t, session.Shell())
-
-		pipe.SendString("complete.\n")
-		require.NoError(t, pipe.WaitString("complete."))
-
-		require.NoError(t, requestResize(session))
+		require.Error(t, session.Shell())
 	})
 
-	t.Run("non interactive", func(t *testing.T) {
+	t.Run("fail to handle request", func(t *testing.T) {
+		server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
+			Handle: testErr,
+		}))
+		defer closeTestServer(t, server)
+
 		session, closer := newTestSession(t, server.Addr(), "username")
 		defer closer.Close()
 
-		pipe := setupSessionPipe(t, session)
-
-		require.NoError(t, session.Start("echo complete."))
-		require.NoError(t, pipe.WaitString("complete."))
+		require.NoError(t, requestTty(session))
+		require.Error(t, session.Shell())
 	})
-}
 
-func Test_Session_failToCreateShell(t *testing.T) {
-	testErr := errors.New("boom")
+	t.Run("fail to wait when handle completed", func(t *testing.T) {
+		server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
+			Wait: testErr,
+		}))
+		defer closeTestServer(t, server)
 
-	failHandler := func(_ string) (handlers.Handler, error) {
-		return nil, testErr
-	}
+		session, closer := newTestSession(t, server.Addr(), "username")
+		defer closer.Close()
 
-	server := newTestServer(t, failHandler)
-	defer closeTestServer(t, server)
+		pipe, err := session.StdinPipe()
+		require.NoError(t, err)
 
-	session, closer := newTestSession(t, server.Addr(), "username")
-	defer closer.Close()
+		require.NoError(t, requestTty(session))
+		require.NoError(t, session.Shell())
 
-	require.NoError(t, requestTty(session))
-	require.Error(t, session.Shell())
-}
+		time.Sleep(1 * time.Second)
 
-func Test_Session_failToHandleRequest(t *testing.T) {
-	boom := errors.New("boom")
-
-	server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
-		Handle: boom,
-	}))
-	defer closeTestServer(t, server)
-
-	session, closer := newTestSession(t, server.Addr(), "username")
-	defer closer.Close()
-
-	require.NoError(t, requestTty(session))
-	require.Error(t, session.Shell())
-}
-
-func Test_Session_failToWaitHandler(t *testing.T) {
-	boom := errors.New("boom")
-
-	server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
-		Wait: boom,
-	}))
-	defer closeTestServer(t, server)
-
-	session, closer := newTestSession(t, server.Addr(), "username")
-	defer closer.Close()
-
-	pipe, err := session.StdinPipe()
-	require.NoError(t, err)
-
-	require.NoError(t, requestTty(session))
-	require.NoError(t, session.Shell())
-
-	time.Sleep(1 * time.Second)
-
-	_, err = pipe.Write([]byte("test"))
-	require.Error(t, err)
-	require.Equal(t, "EOF", err.Error())
+		_, err = pipe.Write([]byte("test"))
+		require.Error(t, err)
+		require.Equal(t, "EOF", err.Error())
+	})
 }
 
 func newEchoHandler(errors handlers.EchoHandlerErrors) handlers.HandlerFunc {
@@ -135,7 +134,7 @@ func requestResize(s *ssh.Session) error {
 	binary.BigEndian.PutUint32(bb, 120)
 	binary.BigEndian.PutUint32(bb, 80)
 	reply, err := s.SendRequest("window-change", true, bb)
-	if ! reply {
+	if !reply {
 		return fmt.Errorf("window-change request doesn't completed expected response=true, actual=%t", reply)
 	}
 	return err

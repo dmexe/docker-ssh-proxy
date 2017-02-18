@@ -19,6 +19,9 @@ lint:
 test: fmt vet lint
 	bin/env go test -cover -race -timeout 1m -v $(PACKAGES)
 
+test.convey:
+	bin/env -c src/daemon goconvey
+
 build.dev: fmt vet lint
 	bin/env go build -race -v -o $(DAEMON) daemon
 

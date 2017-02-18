@@ -33,13 +33,13 @@ type Response struct {
 
 // Handler generic interface
 type Handler interface {
+	io.Closer
 	Handle(req *Request) error
 	Resize(tty *Resize) error
 	Wait() (Response, error)
-	Close() error
 }
 
-// HandlerFunc creates a new handler, it's just wrapper around *Handler constructors, converts payload string to
+// HandlerFunc creates a new handler, it's just wrapper around Handler constructors, converts payload string to
 // payloads.Payload  and calls underlayer handler
 type HandlerFunc func(payload string) (Handler, error)
 

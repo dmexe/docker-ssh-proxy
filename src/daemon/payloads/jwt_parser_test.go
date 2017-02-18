@@ -7,40 +7,43 @@ import (
 	"time"
 )
 
-func Test_JwtParser_shouldParseValidToken(t *testing.T) {
-	token := newTestJwtToken(t, jwt.MapClaims{
-		"cid": "cid",
-		"env": "cenv",
-		"lab": "clabel",
+func Test_JwtParser(t *testing.T) {
+
+	t.Run("should parse valid token", func(t *testing.T) {
+		token := newTestJwtToken(t, jwt.MapClaims{
+			"cid": "cid",
+			"env": "cenv",
+			"lab": "clabel",
+		})
+		parser := newTestJwtParser(t)
+		payload, err := parser.Parse(token)
+
+		require.NoError(t, err)
+		require.NotNil(t, payload)
+
+		require.Equal(t, payload.ContainerID, "cid")
+		require.Equal(t, payload.ContainerLabel, "clabel")
+		require.Equal(t, payload.ContainerEnv, "cenv")
 	})
-	parser := newTestJwtParser(t)
-	payload, err := parser.Parse(token)
 
-	require.NoError(t, err)
-	require.NotNil(t, payload)
+	t.Run("fail on invalid token", func(t *testing.T) {
+		parser := newTestJwtParser(t)
+		payload, err := parser.Parse("")
 
-	require.Equal(t, payload.ContainerID, "cid")
-	require.Equal(t, payload.ContainerLabel, "clabel")
-	require.Equal(t, payload.ContainerEnv, "cenv")
-}
-
-func Test_JwtParser_failOnInvalidToken(t *testing.T) {
-	parser := newTestJwtParser(t)
-	payload, err := parser.Parse("")
-
-	require.Error(t, err)
-	require.Nil(t, payload)
-}
-
-func Test_JwtParser_failOnExpiredToken(t *testing.T) {
-	token := newTestJwtToken(t, jwt.MapClaims{
-		"exp": time.Now().Add(-1 * time.Second).Unix(),
+		require.Error(t, err)
+		require.Nil(t, payload)
 	})
-	parser := newTestJwtParser(t)
-	parsed, err := parser.Parse(token)
 
-	require.Error(t, err)
-	require.Nil(t, parsed)
+	t.Run("fail on expired token", func(t *testing.T) {
+		token := newTestJwtToken(t, jwt.MapClaims{
+			"exp": time.Now().Add(-1 * time.Second).Unix(),
+		})
+		parser := newTestJwtParser(t)
+		parsed, err := parser.Parse(token)
+
+		require.Error(t, err)
+		require.Nil(t, parsed)
+	})
 }
 
 func newTestJwtParser(t *testing.T) *JwtParser {

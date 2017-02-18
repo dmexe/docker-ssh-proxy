@@ -13,99 +13,65 @@ import (
 	"time"
 )
 
-func Test_DockerHandler_shouldRunInteractiveSession(t *testing.T) {
+func Test_DockerHandler(t *testing.T) {
 	cli := newTestDockerClient(t)
 
-	container := newTestDockerContainer(t, cli, "FOO=bar", map[string]string{
-		"foo": "bar",
-	})
-	defer removeTestDockerContainer(t, cli, container)
-
-	payload := &payloads.Payload{
-		ContainerID: container.ID,
-	}
-
-	handler := newTestDockerHandler(t, cli, payload)
-	defer closeTestDockerHandler(t, handler)
-
-	tty := &Tty{
-		Term:   "xterm",
-		Width:  120,
-		Height: 40,
-	}
-
-	pipe := utils.NewBytesBackedPipe()
-
-	handleReq := &Request{
-		Tty:    tty,
-		Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-		Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
-		Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
-	}
-
-	require.NoError(t, handler.Handle(handleReq))
-
-	// Wait until shell session started, otherwise sometimes got docker error 'containerd: process not found for container'
-	time.Sleep(100 * time.Millisecond)
-	require.NoError(t, handler.Resize(handleReq.Tty.Resize()))
-
-	pipe.SendString("echo term is $TERM\n")
-	pipe.SendString("echo uname is $(uname)\n")
-	pipe.SendString("echo complete.\n")
-
-	require.NoError(t, pipe.WaitString("complete."))
-	require.NoError(t, handler.Close())
-
-	_, err := handler.Wait()
-	require.NoError(t, err)
-
-	require.Contains(t, pipe.String(), "echo term is $TERM\r\n")
-	require.Contains(t, pipe.String(), "term is xterm\r\n")
-
-	require.Contains(t, pipe.String(), "echo uname is $(uname)\r\n")
-	require.Contains(t, pipe.String(), "uname is Linux\r\n")
-}
-
-func Test_DockerHandler_shouldRunNonInteractiveSession(t *testing.T) {
-	cli := newTestDockerClient(t)
-
-	container := newTestDockerContainer(t, cli, "FOO=bar", map[string]string{})
-	defer removeTestDockerContainer(t, cli, container)
-
-	payload := &payloads.Payload{
-		ContainerID: container.ID,
-	}
-
-	handler := newTestDockerHandler(t, cli, payload)
-	defer closeTestDockerHandler(t, handler)
-
-	pipe := utils.NewBytesBackedPipe()
-
-	handleReq := &Request{
-		Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-		Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
-		Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
-		Exec:   "sh -c \"ls -la ; echo complete.\"",
-	}
-
-	require.NoError(t, handler.Handle(handleReq))
-	require.NoError(t, pipe.WaitString("complete."))
-	require.NoError(t, handler.Close())
-
-	_, err := handler.Wait()
-	require.NoError(t, err)
-
-	require.Contains(t, pipe.String(), ".dockerenv\n")
-}
-
-func Test_DockerHandler_shouldFindContainers(t *testing.T) {
-	cli := newTestDockerClient(t)
 	container := newTestDockerContainer(t, cli, "ENV_NAME=envValue", map[string]string{
 		"labelName": "labelValue",
 	})
 	defer removeTestDockerContainer(t, cli, container)
 
-	simpleHandler := func(t *testing.T, payload *payloads.Payload) {
+	t.Run("should run interactive session", func(t *testing.T) {
+		payload := &payloads.Payload{
+			ContainerID: container.ID,
+		}
+
+		handler := newTestDockerHandler(t, cli, payload)
+		defer closeTestDockerHandler(t, handler)
+
+		tty := &Tty{
+			Term:   "xterm",
+			Width:  120,
+			Height: 40,
+		}
+
+		pipe := utils.NewBytesBackedPipe()
+
+		handleReq := &Request{
+			Tty:    tty,
+			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+			Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
+		}
+
+		require.NoError(t, handler.Handle(handleReq))
+
+		// Wait until shell session started, otherwise sometimes got docker error 'containerd: process not found for container'
+		time.Sleep(100 * time.Millisecond)
+		require.NoError(t, handler.Resize(handleReq.Tty.Resize()))
+
+		pipe.SendString("echo term is $TERM\n")
+		pipe.SendString("echo uname is $(uname)\n")
+		pipe.SendString("echo complete.\n")
+
+		require.NoError(t, pipe.WaitString("complete."))
+		require.NoError(t, handler.Close())
+
+		_, err := handler.Wait()
+		require.NoError(t, err)
+
+		require.Contains(t, pipe.String(), "echo term is $TERM\r\n")
+		require.Contains(t, pipe.String(), "term is xterm\r\n")
+
+		require.Contains(t, pipe.String(), "echo uname is $(uname)\r\n")
+		require.Contains(t, pipe.String(), "uname is Linux\r\n")
+	})
+
+	t.Run("should run non interactive session", func(t *testing.T) {
+		payload := &payloads.Payload{
+			ContainerID: container.ID,
+		}
+
 		handler := newTestDockerHandler(t, cli, payload)
 		defer closeTestDockerHandler(t, handler)
 
@@ -115,7 +81,7 @@ func Test_DockerHandler_shouldFindContainers(t *testing.T) {
 			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
 			Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
 			Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
-			Exec:   "echo complete.",
+			Exec:   "sh -c \"ls -la ; echo complete.\"",
 		}
 
 		require.NoError(t, handler.Handle(handleReq))
@@ -124,34 +90,53 @@ func Test_DockerHandler_shouldFindContainers(t *testing.T) {
 
 		_, err := handler.Wait()
 		require.NoError(t, err)
-	}
 
-	t.Run("container.ID", func(t *testing.T) {
-		simpleHandler(t, &payloads.Payload{
-			ContainerID: container.ID,
+		require.Contains(t, pipe.String(), ".dockerenv\n")
+	})
+
+	t.Run("should find containers", func(t *testing.T) {
+		simpleHandler := func(t *testing.T, payload *payloads.Payload) {
+			handler := newTestDockerHandler(t, cli, payload)
+			defer closeTestDockerHandler(t, handler)
+
+			pipe := utils.NewBytesBackedPipe()
+
+			handleReq := &Request{
+				Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+				Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+				Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
+				Exec:   "echo complete.",
+			}
+
+			require.NoError(t, handler.Handle(handleReq))
+			require.NoError(t, pipe.WaitString("complete."))
+			require.NoError(t, handler.Close())
+
+			_, err := handler.Wait()
+			require.NoError(t, err)
+		}
+
+		t.Run("container.ID", func(t *testing.T) {
+			simpleHandler(t, &payloads.Payload{
+				ContainerID: container.ID,
+			})
+		})
+
+		t.Run("container.Env", func(t *testing.T) {
+			simpleHandler(t, &payloads.Payload{
+				ContainerEnv: "ENV_NAME=envValue",
+			})
+		})
+
+		t.Run("container.Label", func(t *testing.T) {
+			simpleHandler(t, &payloads.Payload{
+				ContainerLabel: "labelName=labelValue",
+			})
 		})
 	})
 
-	t.Run("container.Env", func(t *testing.T) {
-		simpleHandler(t, &payloads.Payload{
-			ContainerEnv: "ENV_NAME=envValue",
-		})
-	})
-
-	t.Run("container.Label", func(t *testing.T) {
-		simpleHandler(t, &payloads.Payload{
-			ContainerLabel: "labelName=labelValue",
-		})
-	})
-}
-
-func Test_DockerHandler_failToHandleRequests(t *testing.T) {
-	cli := newTestDockerClient(t)
-	container := newTestDockerContainer(t, cli, "FOO=BAR", map[string]string{})
-	defer removeTestDockerContainer(t, cli, container)
-
-	simpleHandler := func(t *testing.T, payload *payloads.Payload, expect string) {
-		handler := newTestDockerHandler(t, cli, payload)
+	t.Run("fail when container not found", func(t *testing.T) {
+		handler := newTestDockerHandler(t, cli, &payloads.Payload{ContainerID: "notFound"})
 		defer closeTestDockerHandler(t, handler)
 
 		pipe := utils.NewBytesBackedPipe()
@@ -165,24 +150,19 @@ func Test_DockerHandler_failToHandleRequests(t *testing.T) {
 
 		err := handler.Handle(handleReq)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), expect)
+		require.Contains(t, err.Error(), "Could not found container for")
 		require.NoError(t, handler.Close())
 
 		resp, err := handler.Wait()
 		require.Error(t, err)
 		require.Equal(t, 1, resp.Code)
-	}
 
-	t.Run("container not found", func(t *testing.T) {
-		simpleHandler(t, &payloads.Payload{ContainerID: "notFound"}, "Could not found container for ")
 	})
 }
 
 func closeTestDockerHandler(t *testing.T, handler *DockerHandler) {
 	if err := handler.Close(); err != nil {
 		t.Error("Could not close docker handler")
-	} else {
-		t.Log("Docker handler successfully closed")
 	}
 }
 
@@ -195,8 +175,6 @@ func removeTestDockerContainer(t *testing.T, cli *docker.Client, container *dock
 
 	if err := cli.RemoveContainer(opts); err != nil {
 		t.Errorf("Could not remove container %s", container.ID)
-	} else {
-		t.Logf("Container %s successfully removed", container.ID)
 	}
 }
 

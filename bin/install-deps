@@ -20,15 +20,28 @@ function get_url() {
   fi
 }
 
-function go_pkg() {
+function go_install() {
   local exec=$1
   local url=$2
   which ${exec} > /dev/null || (
     echo "Installing ${exec} from ${url}..."
-    go get -v -u ${url}
+    go install ${url}
     echo "OK"
   )
 }
 
-get_url ${govendor_path} ${govendor_url} && chmod +x ${govendor_path}
-go_pkg golint github.com/golang/lint/golint
+function go_get() {
+  local exec=$1
+  local url=$2
+  which ${exec} > /dev/null || (
+    echo "Installing ${exec} from ${url}..."
+    go get -u ${url}
+    echo "OK"
+  )
+}
+
+get_url ${govendor_path} ${govendor_url}
+chmod +x ${govendor_path}
+
+go_get golint github.com/golang/lint/golint
+go_get goconvey github.com/smartystreets/goconvey
