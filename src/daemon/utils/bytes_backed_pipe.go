@@ -1,33 +1,35 @@
-package testutils
+package utils
 
 import (
 	"bytes"
-	"strings"
-	"time"
 	"errors"
 	"io"
+	"strings"
 	"sync"
+	"time"
 )
 
-type TestingPipe struct {
+// BytesBackedPipe is a pipe for testing, it can handle async I/O ops
+type BytesBackedPipe struct {
 	sync.RWMutex
-	ReadIn *io.PipeReader
-	ReadOut *io.PipeWriter
-	WriteIn *io.PipeReader
-	WriteOut *io.PipeWriter
-	Bytes bytes.Buffer
+	ReadIn       *io.PipeReader
+	ReadOut      *io.PipeWriter
+	WriteIn      *io.PipeReader
+	WriteOut     *io.PipeWriter
+	Bytes        bytes.Buffer
 	readComplete chan error
 }
 
-func NewTestingPipe() *TestingPipe {
+// NewBytesBackedPipe creates a new pipe
+func NewBytesBackedPipe() *BytesBackedPipe {
 	readIn, readOut := io.Pipe()
 	writeIn, writeOut := io.Pipe()
 
-	pipe := &TestingPipe{
-		ReadIn: readIn,
-		ReadOut: readOut,
-		WriteIn: writeIn,
-		WriteOut: writeOut,
+	pipe := &BytesBackedPipe{
+		ReadIn:       readIn,
+		ReadOut:      readOut,
+		WriteIn:      writeIn,
+		WriteOut:     writeOut,
 		readComplete: make(chan error),
 	}
 
@@ -35,19 +37,22 @@ func NewTestingPipe() *TestingPipe {
 	return pipe
 }
 
-func (p *TestingPipe) String() string {
+// String content of readed bytes
+func (p *BytesBackedPipe) String() string {
 	return p.Bytes.String()
 }
 
-func (p *TestingPipe) IoReader() io.Reader {
+// IoReader interface
+func (p *BytesBackedPipe) IoReader() io.Reader {
 	return p.WriteIn
 }
 
-func (p *TestingPipe) IoWriter() io.Writer {
+// IoWriter interface
+func (p *BytesBackedPipe) IoWriter() io.Writer {
 	return p.ReadOut
 }
 
-func (p *TestingPipe) readAsync() {
+func (p *BytesBackedPipe) readAsync() {
 	go func() {
 		buf := make([]byte, 128)
 		for {
@@ -68,14 +73,15 @@ func (p *TestingPipe) readAsync() {
 	}()
 }
 
-func (p *TestingPipe) WaitStringReceived(str string) error {
+// WaitString waits until a given string appears in the buffer
+func (p *BytesBackedPipe) WaitString(str string) error {
 	finished := make(chan bool)
 	defer close(finished)
 
 	go func() {
 		for {
 			select {
-			case <- time.After(100 * time.Millisecond):
+			case <-time.After(100 * time.Millisecond):
 				p.RLock()
 				if strings.Contains(p.Bytes.String(), str) {
 					p.RUnlock()
@@ -101,7 +107,8 @@ func (p *TestingPipe) WaitStringReceived(str string) error {
 	return nil
 }
 
-func (p *TestingPipe) SendString(str string) error {
+// SendString to pipe
+func (p *BytesBackedPipe) SendString(str string) error {
 	c := make(chan error)
 	defer close(c)
 	go func() {
@@ -112,7 +119,7 @@ func (p *TestingPipe) SendString(str string) error {
 	select {
 	case err := <-c:
 		return err
-	case <- time.After(3 * time.Second):
+	case <-time.After(3 * time.Second):
 		return errors.New("Could wait write response within 3 seconds")
 	}
 }

@@ -18,9 +18,9 @@ var (
 )
 
 func init() {
-	flag.StringVar(&privateKeyFile, "k", "./id_rsa", "host private key file")
-	flag.StringVar(&listenAddress, "l", "0.0.0.0:2200", "listen address")
-	flag.BoolVar(&debug, "d", false, "enable debug output")
+	flag.StringVar(&privateKeyFile, "sshd.pkey", "./id_rsa", "host private key file")
+	flag.StringVar(&listenAddress, "sshd.listen", "0.0.0.0:2200", "listen address")
+	flag.BoolVar(&debug, "debug", false, "enable debug output")
 	flag.Parse()
 }
 

@@ -2,8 +2,8 @@ package sshd
 
 import (
 	"daemon/handlers"
+	"daemon/utils"
 	"fmt"
-	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"io/ioutil"
 	"net"
@@ -19,13 +19,13 @@ type CreateServerOptions struct {
 
 // Server implements sshd server
 type Server struct {
+	*utils.LogEntry
 	config        *ssh.ServerConfig
 	listenAddress string
 	handlerFunc   handlers.HandlerFunc
 	listener      net.Listener
 	completed     chan error
 	closed        bool
-	log           *logrus.Entry
 }
 
 // NewServer creates a new sshd server instance using given options and session handlers constructor
@@ -54,7 +54,7 @@ func NewServer(opts CreateServerOptions, handlerFurn handlers.HandlerFunc) (*Ser
 		listenAddress: opts.ListenAddr,
 		handlerFunc:   handlerFurn,
 		completed:     make(chan error),
-		log:           logrus.WithField("logger", "sshd.server"),
+		LogEntry:      utils.NewLogEntry("sshd.server"),
 	}
 
 	return server, nil
@@ -68,7 +68,7 @@ func (s *Server) Addr() net.Addr {
 // Close server listener
 func (s *Server) Close() error {
 	if s.closed {
-		s.log.Warnf("Server close called multiple times")
+		s.Log.Warnf("Server close called multiple times")
 	}
 	s.closed = true
 
@@ -84,7 +84,7 @@ func (s *Server) Close() error {
 func (s *Server) Wait() error {
 	select {
 	case err := <-s.completed:
-		s.log.Infof("Server completed")
+		s.Log.Infof("Server completed")
 		return err
 	}
 }
@@ -97,11 +97,11 @@ func (s *Server) Start() error {
 	}
 	s.listener = listener
 
-	s.log.Printf("Listening on %s...", s.listenAddress)
+	s.Log.Printf("Listening on %s...", s.listenAddress)
 
 	go func() {
 		defer func() {
-			s.log.Debugf("Stop accepting incoming connections")
+			s.Log.Debugf("Stop accepting incoming connections")
 			s.completed <- nil
 		}()
 
@@ -112,28 +112,27 @@ func (s *Server) Start() error {
 				if strings.HasSuffix(err.Error(), "use of closed network connection") {
 					break
 				}
-				s.log.Errorf("Failed to accept incoming connection (%s)", err)
+				s.Log.Errorf("Failed to accept incoming connection (%s)", err)
 				break
 			}
 
 			sshConn, chans, reqs, err := ssh.NewServerConn(tcpConn, s.config)
 			if err != nil {
-				s.log.Errorf("Failed to handshake (%s)", err)
+				s.Log.Errorf("Failed to handshake (%s)", err)
 				continue
 			}
 
-			s.log.Infof("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
+			s.Log.Infof("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
 
 			session := NewSession(&CreateSessionOptions{
 				Conn:        sshConn,
 				NewChannels: chans,
 				Requests:    reqs,
 				HandlerFunc: s.handlerFunc,
-				Log:         s.log,
 			})
 
 			if err := session.Handle(); err != nil {
-				s.log.Errorf("Could not handle client connection (%s)", err)
+				s.Log.Errorf("Could not handle client connection (%s)", err)
 				s.closeSession(sshConn)
 				continue
 			}
@@ -145,7 +144,7 @@ func (s *Server) Start() error {
 
 func (s *Server) closeSession(sshConn ssh.Conn) {
 	if err := sshConn.Close(); err != nil {
-		s.log.Errorf("Could not handle client connection (%s)", err)
+		s.Log.Errorf("Could not handle client connection (%s)", err)
 	}
-	s.log.Info("Client connection successfully closed")
+	s.Log.Info("Client connection successfully closed")
 }

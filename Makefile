@@ -1,7 +1,7 @@
 GOVENDOR := $(shell pwd)/bin/govendor
 DAEMON   := $(shell pwd)/bin/daemon
 ID_RSA   := $(shell pwd)/bin/id_rsa
-PACKAGES := daemon daemon/handlers daemon/payloads daemon/sshd
+PACKAGES := daemon daemon/handlers daemon/payloads daemon/sshd daemon/utils
 
 all: build
 
@@ -12,7 +12,7 @@ vet:
 	bin/env go vet $(PACKAGES)
 
 lint:
-	bin/env golint $(PACKAGES)
+	bin/env golint -set_exit_status $(PACKAGES)
 
 build: fmt vet lint
 	bin/env go build -race -o $(DAEMON) daemon
@@ -21,7 +21,7 @@ test: fmt vet
 	bin/env go test -race -timeout 1m -v $(PACKAGES)
 
 run: all $(ID_RSA)
-	bin/daemon -k $(ID_RSA) -d
+	bin/daemon -sshd.pkey $(ID_RSA) -d
 
 deps:
 	bin/install-deps

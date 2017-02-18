@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"daemon/payloads"
-	"daemon/testutils"
+	"daemon/utils"
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/stretchr/testify/require"
@@ -14,19 +14,19 @@ import (
 )
 
 func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
-	cli := NewTestDockerClient(t)
+	cli := newTestDockerClient(t)
 
-	container := NewTestDockerContainer(t, cli, "FOO=bar", map[string]string{
+	container := newTestDockerContainer(t, cli, "FOO=bar", map[string]string{
 		"foo": "bar",
 	})
-	defer RemoveTestDockerContainer(t, cli, container)
+	defer removeTestDockerContainer(t, cli, container)
 
 	payload := &payloads.Payload{
 		ContainerID: container.ID,
 	}
 
-	handler := NewTestDockerHandler(t, cli, payload)
-	defer CloseTestDockerHandler(t, handler)
+	handler := newTestDockerHandler(t, cli, payload)
+	defer closeTestDockerHandler(t, handler)
 
 	tty := &Tty{
 		Term:   "xterm",
@@ -34,7 +34,7 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 		Height: 40,
 	}
 
-	pipe := testutils.NewTestingPipe()
+	pipe := utils.NewBytesBackedPipe()
 
 	handleReq := &Request{
 		Tty:    tty,
@@ -53,7 +53,7 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 	pipe.SendString("echo uname is $(uname)\n")
 	pipe.SendString("echo complete.\n")
 
-	require.NoError(t, pipe.WaitStringReceived("complete."))
+	require.NoError(t, pipe.WaitString("complete."))
 	require.NoError(t, handler.Close())
 
 	_, err := handler.Wait()
@@ -67,19 +67,19 @@ func Test_DockerHandler_shouldSuccessfullyRunInteractiveSession(t *testing.T) {
 }
 
 func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T) {
-	cli := NewTestDockerClient(t)
+	cli := newTestDockerClient(t)
 
-	container := NewTestDockerContainer(t, cli, "FOO=bar", map[string]string{})
-	defer RemoveTestDockerContainer(t, cli, container)
+	container := newTestDockerContainer(t, cli, "FOO=bar", map[string]string{})
+	defer removeTestDockerContainer(t, cli, container)
 
 	payload := &payloads.Payload{
 		ContainerID: container.ID,
 	}
 
-	handler := NewTestDockerHandler(t, cli, payload)
-	defer CloseTestDockerHandler(t, handler)
+	handler := newTestDockerHandler(t, cli, payload)
+	defer closeTestDockerHandler(t, handler)
 
-	pipe := testutils.NewTestingPipe()
+	pipe := utils.NewBytesBackedPipe()
 
 	handleReq := &Request{
 		Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
@@ -89,7 +89,7 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T)
 	}
 
 	require.NoError(t, handler.Handle(handleReq))
-	require.NoError(t, pipe.WaitStringReceived("complete."))
+	require.NoError(t, pipe.WaitString("complete."))
 	require.NoError(t, handler.Close())
 
 	_, err := handler.Wait()
@@ -99,17 +99,17 @@ func Test_DockerHandler_shouldSuccessfullyRunNonInteractiveSession(t *testing.T)
 }
 
 func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
-	cli := NewTestDockerClient(t)
-	container := NewTestDockerContainer(t, cli, "ENV_NAME=envValue", map[string]string{
+	cli := newTestDockerClient(t)
+	container := newTestDockerContainer(t, cli, "ENV_NAME=envValue", map[string]string{
 		"labelName": "labelValue",
 	})
-	defer RemoveTestDockerContainer(t, cli, container)
+	defer removeTestDockerContainer(t, cli, container)
 
 	simpleHandler := func(t *testing.T, payload *payloads.Payload) {
-		handler := NewTestDockerHandler(t, cli, payload)
-		defer CloseTestDockerHandler(t, handler)
+		handler := newTestDockerHandler(t, cli, payload)
+		defer closeTestDockerHandler(t, handler)
 
-		pipe := testutils.NewTestingPipe()
+		pipe := utils.NewBytesBackedPipe()
 
 		handleReq := &Request{
 			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
@@ -119,7 +119,7 @@ func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
 		}
 
 		require.NoError(t, handler.Handle(handleReq))
-		require.NoError(t, pipe.WaitStringReceived("complete."))
+		require.NoError(t, pipe.WaitString("complete."))
 		require.NoError(t, handler.Close())
 
 		_, err := handler.Wait()
@@ -146,15 +146,15 @@ func Test_DockerHandler_shouldSuccessfullyFindContainers(t *testing.T) {
 }
 
 func Test_DockerHandler_shouldFailToHandleRequests(t *testing.T) {
-	cli := NewTestDockerClient(t)
-	container := NewTestDockerContainer(t, cli, "FOO=BAR", map[string]string{})
-	defer RemoveTestDockerContainer(t, cli, container)
+	cli := newTestDockerClient(t)
+	container := newTestDockerContainer(t, cli, "FOO=BAR", map[string]string{})
+	defer removeTestDockerContainer(t, cli, container)
 
 	simpleHandler := func(t *testing.T, payload *payloads.Payload, expect string) {
-		handler := NewTestDockerHandler(t, cli, payload)
-		defer CloseTestDockerHandler(t, handler)
+		handler := newTestDockerHandler(t, cli, payload)
+		defer closeTestDockerHandler(t, handler)
 
-		pipe := testutils.NewTestingPipe()
+		pipe := utils.NewBytesBackedPipe()
 
 		handleReq := &Request{
 			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
@@ -178,7 +178,7 @@ func Test_DockerHandler_shouldFailToHandleRequests(t *testing.T) {
 	})
 }
 
-func CloseTestDockerHandler(t *testing.T, handler *DockerHandler) {
+func closeTestDockerHandler(t *testing.T, handler *DockerHandler) {
 	if err := handler.Close(); err != nil {
 		t.Error("Could not close docker handler")
 	} else {
@@ -186,7 +186,7 @@ func CloseTestDockerHandler(t *testing.T, handler *DockerHandler) {
 	}
 }
 
-func RemoveTestDockerContainer(t *testing.T, cli *docker.Client, container *docker.Container) {
+func removeTestDockerContainer(t *testing.T, cli *docker.Client, container *docker.Container) {
 	opts := docker.RemoveContainerOptions{
 		ID:            container.ID,
 		RemoveVolumes: true,
@@ -200,7 +200,7 @@ func RemoveTestDockerContainer(t *testing.T, cli *docker.Client, container *dock
 	}
 }
 
-func NewTestDockerContainer(t *testing.T, cli *docker.Client, env string, labels map[string]string) *docker.Container {
+func newTestDockerContainer(t *testing.T, cli *docker.Client, env string, labels map[string]string) *docker.Container {
 	_, file, line, _ := runtime.Caller(1)
 
 	name := path.Base(fmt.Sprintf("%s.%d", file, line))
@@ -220,7 +220,7 @@ func NewTestDockerContainer(t *testing.T, cli *docker.Client, env string, labels
 
 	err = cli.StartContainer(container.ID, &docker.HostConfig{})
 	if err != nil {
-		RemoveTestDockerContainer(t, cli, container)
+		removeTestDockerContainer(t, cli, container)
 	}
 	require.NoError(t, err, name)
 
@@ -229,7 +229,7 @@ func NewTestDockerContainer(t *testing.T, cli *docker.Client, env string, labels
 	return container
 }
 
-func NewTestDockerClient(t *testing.T) *docker.Client {
+func newTestDockerClient(t *testing.T) *docker.Client {
 	cli, err := NewDockerClient()
 
 	require.NoError(t, err)
@@ -238,7 +238,7 @@ func NewTestDockerClient(t *testing.T) *docker.Client {
 	return cli
 }
 
-func NewTestDockerHandler(t *testing.T, cli *docker.Client, payload *payloads.Payload) *DockerHandler {
+func newTestDockerHandler(t *testing.T, cli *docker.Client, payload *payloads.Payload) *DockerHandler {
 	handler, err := NewDockerHandler(cli, payload)
 
 	require.NoError(t, err)

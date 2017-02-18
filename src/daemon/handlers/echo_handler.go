@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	log "github.com/Sirupsen/logrus"
+	"daemon/utils"
 	"io"
 )
 
@@ -14,6 +14,7 @@ type EchoHandlerErrors struct {
 
 // EchoHandler used only in tests
 type EchoHandler struct {
+	*utils.LogEntry
 	completed chan error
 	errors    EchoHandlerErrors
 }
@@ -23,6 +24,7 @@ func NewEchoHandler(errors EchoHandlerErrors) *EchoHandler {
 	return &EchoHandler{
 		completed: make(chan error),
 		errors:    errors,
+		LogEntry:  utils.NewLogEntry("handler.echo"),
 	}
 }
 
@@ -31,7 +33,7 @@ func (h *EchoHandler) Handle(req *Request) error {
 	go func() {
 		_, err := io.Copy(req.Stdout, req.Stdin)
 		if err != nil {
-			log.Warnf("Could not copy io streams (%s)", err)
+			h.Log.Warnf("Could not copy io streams (%s)", err)
 		}
 		h.completed <- err
 	}()

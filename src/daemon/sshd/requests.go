@@ -5,11 +5,11 @@ import (
 	"daemon/handlers"
 	"encoding/binary"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 )
 
-func reqReply(req *ssh.Request, value bool) {
+func reqReply(req *ssh.Request, value bool, log *logrus.Entry) {
 	if req.WantReply {
 		if err := req.Reply(value, nil); err != nil {
 			log.Warnf("Could not send reply %s (%s)", req.Type, err)

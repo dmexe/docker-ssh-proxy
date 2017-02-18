@@ -1,6 +1,8 @@
 package payloads
 
 import (
+	"daemon/utils"
+	"github.com/Sirupsen/logrus"
 	jwt "github.com/dgrijalva/jwt-go"
 	"os"
 )
@@ -11,18 +13,27 @@ import (
 // * env - container environment variable (eg. FOO=bar)
 // * lab - container label
 type JwtParser struct {
+	*utils.LogEntry
 	secret string
+	log    *logrus.Entry
 }
+
+const (
+	jwtContainerID    = "cid"
+	jwtContainerEnv   = "env"
+	jwtContainerLabel = "lab"
+)
 
 // NewJwtParser constructs a new parser instance using given JWT secret
 func NewJwtParser(secret string) (*JwtParser, error) {
 	config := &JwtParser{
-		secret: secret,
+		secret:   secret,
+		LogEntry: utils.NewLogEntry("parser.jwt"),
 	}
 	return config, nil
 }
 
-// NewJwtParserFromEnv construct a new parser instance using JWT_SECRET
+// NewJwtParserFromEnv construct a new parser instance using jwtSecret
 // environment variable
 func NewJwtParserFromEnv() (*JwtParser, error) {
 	secret := os.Getenv("JWT_SECRET")
@@ -45,9 +56,9 @@ func (p *JwtParser) Parse(token string) (*Payload, error) {
 
 	claims := parsed.Claims.(jwt.MapClaims)
 
-	containerID := claims["cid"]
-	containerEnv := claims["env"]
-	containerLabel := claims["lab"]
+	containerID := claims[jwtContainerID]
+	containerEnv := claims[jwtContainerEnv]
+	containerLabel := claims[jwtContainerLabel]
 
 	payload := &Payload{}
 
