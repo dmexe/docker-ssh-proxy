@@ -1,36 +1,34 @@
-GOVENDOR := bin/env -c src/daemon $(CURDIR)/bin/govendor
-DAEMON   := $(CURDIR)/bin/daemon
+MAIN     := daemon
+BIN      := $(CURDIR)/bin/daemon
+GOVENDOR := bin/env -c src/$(MAIN) $(CURDIR)/bin/govendor
 ID_RSA   := $(CURDIR)/bin/id_rsa
+GO       := bin/env go
+GOLINT   := bin/env golint
 PACKAGES =  $(shell $(GOVENDOR) list -no-status +local)
-GOARCH   =  $(shell go env GOARCH)
-
 
 all: build.dev
 
 fmt:
-	bin/env go fmt $(PACKAGES)
+	$(GO) fmt $(PACKAGES)
 
 vet:
-	bin/env go vet $(PACKAGES)
+	$(GO) vet $(PACKAGES)
 
 lint:
-	bin/env golint -set_exit_status $(PACKAGES)
+	$(GOLINT) -set_exit_status $(FILES)
 
 test: fmt vet lint
-	bin/env go test -cover -race -timeout 1m -v $(PACKAGES)
-
-test.convey:
-	bin/env -c src/daemon goconvey
+	$(GO) test -cover -race -timeout 1m -v $(PACKAGES)
 
 build.dev: fmt vet lint
-	bin/env go build -race -v -o $(DAEMON) daemon
+	$(GO) build -race -v -o $(BIN) $(MAIN)
 
 build.release:
-	GOOS=linux  bin/env go build -ldflags "-s -w" -o $(DAEMON)-linux-$(GOARCH)  daemon
-	GOOS=darwin bin/env go build -ldflags "-s -w" -o $(DAEMON)-darwin-$(GOARCH) daemon
+	GOOS=linux  GOARCH=amd64 $(GO) build -ldflags "-s -w" -o $(BIN)-Linux-x86_64  $(MAIN)
+	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags "-s -w" -o $(BIN)-Darwin-x86_64 $(MAIN)
 
 run: build.dev $(ID_RSA)
-	bin/daemon -sshd.pkey $(ID_RSA) -debug
+	$(BIN) -sshd.pkey $(ID_RSA) -debug
 
 deps:
 	bin/install-deps
