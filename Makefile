@@ -15,7 +15,7 @@ vet:
 	$(GO) vet $(PACKAGES)
 
 lint:
-	$(GOLINT) -set_exit_status $(FILES)
+	$(GOLINT) -set_exit_status $(PACKAGES)
 
 test: fmt vet lint
 	$(GO) test -cover -race -timeout 1m -v $(PACKAGES)

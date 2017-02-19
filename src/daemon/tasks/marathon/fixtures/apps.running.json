@@ -1,0 +1,65 @@
+{
+  "apps": [
+    {
+      "container": {
+        "docker": {
+          "image": "alpine"
+        }
+      },
+      "constraints": [
+        [
+          "spot",
+          "CLUSTER",
+          "0"
+        ]
+      ],
+      "cpus": 0.1,
+      "disk": 10,
+      "gpus": 0,
+      "healthChecks": [
+        {
+          "gracePeriodSeconds": 300,
+          "ignoreHttp1xx": false,
+          "intervalSeconds": 60,
+          "maxConsecutiveFailures": 3,
+          "port": 8080,
+          "protocol": "TCP",
+          "timeoutSeconds": 20
+        }
+      ],
+      "id": "/app/demo",
+      "instances": 1,
+      "labels": {
+        "labelName": "labelValue"
+      },
+      "mem": 128,
+      "tasks": [
+        {
+          "appId": "/app/demo",
+          "healthCheckResults": [
+            {
+              "alive": true,
+              "consecutiveFailures": 0,
+              "firstSuccess": "2017-02-15T15:41:07.313Z",
+              "lastFailure": null,
+              "lastFailureCause": null,
+              "lastSuccess": "2017-02-19T11:39:03.992Z",
+              "taskId": "app_demo.27b10ccc-f395-11e6-9a83-424dbc3181a1"
+            }
+          ],
+          "host": "10.1.1.244",
+          "id": "app_demo.27b10ccc-f395-11e6-9a83-424dbc3181a1",
+          "stagedAt": "2017-02-15T15:41:02.297Z",
+          "startedAt": "2017-02-15T15:41:06.503Z",
+          "state": "TASK_RUNNING",
+          "version": "2017-02-15T15:41:02.270Z"
+        }
+      ],
+      "version": "2017-02-15T15:41:02.270Z",
+      "versionInfo": {
+        "lastConfigChangeAt": "2017-02-15T15:11:23.265Z",
+        "lastScalingAt": "2017-02-15T15:41:02.270Z"
+      }
+    }
+  ]
+}

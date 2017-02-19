@@ -1,6 +1,27 @@
 package tasks
 
-import "net"
+import (
+	"daemon/payloads"
+	"net"
+	"time"
+)
+
+const (
+	// TaskStatusPending when is still not running
+	TaskStatusPending = "pending"
+
+	// TaskStatusRunning when is running
+	TaskStatusRunning = "running"
+
+	// TaskStatusFailed when failed for any reason
+	TaskStatusFailed = "failed"
+
+	// TaskStatusFinished when successfully finished
+	TaskStatusFinished = "finished"
+
+	// TaskStatusUnknown all other statuses
+	TaskStatusUnknown = "unknown"
+)
 
 // Provider is an interface for task loaders
 type Provider interface {
@@ -10,19 +31,20 @@ type Provider interface {
 // Task keeps exported task fields and instances
 type Task struct {
 	ID          string
-	Limits      map[string]string
+	Image       string
+	CPU         float32
+	Mem         uint
 	Constraints map[string]string
-	Version     string
 	Instances   []Instance
+	UpdatedAt   time.Time
 }
 
 // Instance keeps exported instance fields
 type Instance struct {
-	ID             string
-	Addr           net.Addr
-	State          string
-	Healthy        bool
-	ContainerID    string
-	ContainerLabel string
-	ContainerEnv   string
+	ID        string
+	Addr      net.IP
+	State     string
+	Healthy   bool
+	Payload   payloads.Payload
+	UpdatedAt time.Time
 }
