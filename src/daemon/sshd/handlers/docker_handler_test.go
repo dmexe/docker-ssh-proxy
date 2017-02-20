@@ -53,7 +53,7 @@ func Test_DockerHandler(t *testing.T) {
 
 		pipe.SendString("echo term is $TERM\n")
 		pipe.SendString("echo uname is $(uname)\n")
-		pipe.SendString("echo complete.\n")
+		pipe.SendString("echo compl\\ete.\n")
 
 		require.NoError(t, pipe.WaitString("complete."))
 		require.NoError(t, handler.Close())
@@ -82,7 +82,7 @@ func Test_DockerHandler(t *testing.T) {
 			Stdin:   iotest.NewReadLogger("[r]: ", pipe.IoReader()),
 			Stdout:  iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
 			Stderr:  iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
-			Exec:    "sh -c \"ls -la ; echo complete.\"",
+			Exec:    "sh -c \"ls -la ; echo compl\\ete.\"",
 			Payload: payload,
 		}
 
@@ -107,7 +107,7 @@ func Test_DockerHandler(t *testing.T) {
 				Stdin:   iotest.NewReadLogger("[r]: ", pipe.IoReader()),
 				Stdout:  iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
 				Stderr:  iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
-				Exec:    "echo complete.",
+				Exec:    "echo compl\\ete.",
 				Payload: payload,
 			}
 

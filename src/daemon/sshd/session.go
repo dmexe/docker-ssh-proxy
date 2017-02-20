@@ -23,6 +23,7 @@ type SessionOptions struct {
 
 // Session uses for handing ssh client requests
 type Session struct {
+	sync.Mutex
 	conn        *ssh.ServerConn
 	newChannels <-chan ssh.NewChannel
 	requests    <-chan *ssh.Request
@@ -33,7 +34,6 @@ type Session struct {
 	closed      *abool.AtomicBool
 	log         *logrus.Entry
 	payload     payloads.Payload
-	handlerLock sync.RWMutex
 }
 
 // NewSession creates a new consumer for incoming ssh connection
@@ -107,16 +107,13 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 }
 
 func (s *Session) handleResizeReq(req *ssh.Request) {
-	s.handlerLock.RLock()
-	defer s.handlerLock.RUnlock()
-
-	if s.handlerTty == nil {
+	if !s.isTTY() {
 		s.log.Warn("'window-change' request called before 'tty-req' request")
 		reqReply(req, false, s.log)
 		return
 	}
 
-	if s.handler == nil {
+	if !s.isHandled() {
 		s.log.Warn("'window-changed' request called without 'exec' request")
 		reqReply(req, false, s.log)
 		return
@@ -139,10 +136,7 @@ func (s *Session) handleResizeReq(req *ssh.Request) {
 }
 
 func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
-	s.handlerLock.Lock()
-	defer s.handlerLock.Unlock()
-
-	if s.handler != nil {
+	if s.isHandled() {
 		s.log.Warn("'exec' request called multiple times")
 		reqReply(req, false, s.log)
 		return
@@ -173,13 +167,14 @@ func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
 		return
 	}
 
+	s.setHandler(sessionHandler)
+
 	if err := sessionHandler.Handle(handleRequest); err != nil {
 		s.log.Errorf("Could not handle request (%s)", err)
 		reqReply(req, false, s.log)
 		return
 	}
 
-	s.handler = sessionHandler
 	reqReply(req, true, s.log)
 
 	s.log.Debugf("Request successfully handled")
@@ -195,7 +190,7 @@ func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
 }
 
 func (s *Session) handleTtyReq(req *ssh.Request) {
-	if s.handlerTty != nil {
+	if s.isTTY() {
 		s.log.Warnf("'tty-req' request called multiple times")
 		return
 	}
@@ -207,7 +202,7 @@ func (s *Session) handleTtyReq(req *ssh.Request) {
 		return
 	}
 
-	s.handlerTty = tty
+	s.setTTY(tty)
 	reqReply(req, true, s.log)
 }
 
@@ -239,13 +234,11 @@ func (s *Session) closeChannel(channel ssh.Channel) {
 	}
 	s.closed.Set()
 
-	s.handlerLock.RLock()
-	if s.handler != nil {
+	if s.isHandled() {
 		if err := s.handler.Close(); err != nil {
 			s.log.Errorf("Could not close handlers (%s)", err)
 		}
 	}
-	s.handlerLock.RUnlock()
 
 	if err := channel.Close(); err != nil {
 		if err.Error() != "EOF" {
@@ -256,4 +249,28 @@ func (s *Session) closeChannel(channel ssh.Channel) {
 	} else {
 		s.log.Infof("Channel successfuly closed")
 	}
+}
+
+func (s *Session) isHandled() bool {
+	s.Lock()
+	defer s.Unlock()
+	return s.handler != nil
+}
+
+func (s *Session) setHandler(handler handlers.Handler) {
+	s.Lock()
+	defer s.Unlock()
+	s.handler = handler
+}
+
+func (s *Session) isTTY() bool {
+	s.Lock()
+	defer s.Unlock()
+	return s.handlerTty != nil
+}
+
+func (s *Session) setTTY(tty *handlers.Tty) {
+	s.Lock()
+	defer s.Unlock()
+	s.handlerTty = tty
 }

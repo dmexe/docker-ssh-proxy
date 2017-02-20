@@ -24,8 +24,8 @@ var (
 )
 
 func init() {
-	flag.StringVar(&privateKeyFile, "sshd.pkey", "./id_rsa", "host private key file")
-	flag.StringVar(&listenAddress, "sshd.listen", "0.0.0.0:2200", "listen address")
+	flag.StringVar(&privateKeyFile, "ssh.key", "./id_rsa", "host private key file")
+	flag.StringVar(&listenAddress, "ssh.listen", "0.0.0.0:2200", "listen address")
 	flag.StringVar(&marathonURL, "marathon.url", "http://marathon.mesos:8080", "marathon api url")
 	flag.BoolVar(&debug, "debug", false, "enable debug output")
 	flag.Parse()
