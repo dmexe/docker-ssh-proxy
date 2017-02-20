@@ -3,9 +3,9 @@ package main
 import (
 	"daemon/apiserver"
 	"daemon/apiserver/marathon"
-	"daemon/handlers"
 	"daemon/payloads"
 	"daemon/sshd"
+	"daemon/sshd/handlers"
 	"flag"
 	log "github.com/Sirupsen/logrus"
 	"os"

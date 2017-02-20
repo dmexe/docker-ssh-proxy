@@ -1,7 +1,7 @@
 package sshd
 
 import (
-	"daemon/handlers"
+	"daemon/sshd/handlers"
 	"daemon/utils"
 	"encoding/binary"
 	"errors"
