@@ -8,7 +8,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"io"
-	"time"
 )
 
 // SessionOptions keeps parameters for constructor
@@ -28,7 +27,6 @@ type Session struct {
 	handlerFunc handlers.HandlerFunc
 	handlerTty  *handlers.Tty
 	handler     handlers.Handler
-	handled     bool
 	exited      bool
 	closed      bool
 	log         *logrus.Entry
@@ -82,40 +80,24 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 
 	go func() {
 		defer s.closeChannel(channel)
+		defer s.log.Debug("Client closed connection")
 
-		for {
-			select {
+		for req := range requests {
+			switch req.Type {
 
-			case <-time.After(10 * time.Second):
-				if !s.handled {
-					s.log.Warn("Could not handle request within 10 second")
-					goto END_LOOP
-				}
+			case "exec", "shell":
+				s.handleCommandReq(req, channel)
 
-			case req := <-requests:
-				if req == nil {
-					s.log.Debug("No more requests")
-					goto END_LOOP
-				}
+			case "pty-req":
+				s.handleTtyReq(req)
 
-				switch req.Type {
+			case "window-change":
+				s.handleResizeReq(req)
 
-				case "exec", "shell":
-					s.handleCommandReq(req, channel)
-
-				case "pty-req":
-					s.handleTtyReq(req)
-
-				case "window-change":
-					s.handleResizeReq(req)
-
-				default:
-					reqReply(req, false, s.log)
-				}
+			default:
+				reqReply(req, false, s.log)
 			}
 		}
-
-	END_LOOP:
 	}()
 }
 
@@ -149,12 +131,11 @@ func (s *Session) handleResizeReq(req *ssh.Request) {
 }
 
 func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
-	if s.handled {
+	if s.handler != nil {
 		s.log.Warn("'exec' request called multiple times")
 		reqReply(req, false, s.log)
 		return
 	}
-	s.handled = true
 
 	handleRequest := &handlers.Request{
 		Tty:     s.handlerTty,

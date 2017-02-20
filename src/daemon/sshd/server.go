@@ -8,7 +8,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"net"
-	"strings"
 )
 
 // ServerOptions keeps parameters for server instance
@@ -104,10 +103,11 @@ func (s *Server) Run() error {
 		for {
 			tcpConn, err := listener.Accept()
 
+			if s.closed {
+				break
+			}
+
 			if err != nil {
-				if strings.HasSuffix(err.Error(), "use of closed network connection") {
-					break
-				}
 				s.log.Errorf("Failed to accept incoming connection (%s)", err)
 				break
 			}
