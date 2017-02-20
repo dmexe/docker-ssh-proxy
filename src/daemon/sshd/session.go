@@ -6,8 +6,10 @@ import (
 	"daemon/utils"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/tevino/abool"
 	"golang.org/x/crypto/ssh"
 	"io"
+	"sync"
 )
 
 // SessionOptions keeps parameters for constructor
@@ -27,10 +29,11 @@ type Session struct {
 	handlerFunc handlers.HandlerFunc
 	handlerTty  *handlers.Tty
 	handler     handlers.Handler
-	exited      bool
-	closed      bool
+	exited      *abool.AtomicBool
+	closed      *abool.AtomicBool
 	log         *logrus.Entry
 	payload     payloads.Payload
+	handlerLock sync.RWMutex
 }
 
 // NewSession creates a new consumer for incoming ssh connection
@@ -42,6 +45,8 @@ func NewSession(options *SessionOptions) *Session {
 		handlerFunc: options.HandlerFunc,
 		payload:     options.Payload,
 		log:         utils.NewLogEntry("sshd.session"),
+		closed:      abool.New(),
+		exited:      abool.New(),
 	}
 	return session
 }
@@ -102,6 +107,9 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 }
 
 func (s *Session) handleResizeReq(req *ssh.Request) {
+	s.handlerLock.RLock()
+	defer s.handlerLock.RUnlock()
+
 	if s.handlerTty == nil {
 		s.log.Warn("'window-change' request called before 'tty-req' request")
 		reqReply(req, false, s.log)
@@ -131,6 +139,9 @@ func (s *Session) handleResizeReq(req *ssh.Request) {
 }
 
 func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
+	s.handlerLock.Lock()
+	defer s.handlerLock.Unlock()
+
 	if s.handler != nil {
 		s.log.Warn("'exec' request called multiple times")
 		reqReply(req, false, s.log)
@@ -201,33 +212,40 @@ func (s *Session) handleTtyReq(req *ssh.Request) {
 }
 
 func (s *Session) exitChannel(channel ssh.Channel, code uint32) {
-	if s.exited {
+	// channel already closed
+	if s.closed.IsSet() {
+		return
+	}
+
+	if s.exited.IsSet() {
 		s.log.Warnf("Channel exit called multiple times")
 		return
 	}
-	s.exited = true
+	s.exited.Set()
 
 	if _, err := channel.SendRequest("exit-status", false, buildExitStatus(code)); err != nil {
 		s.log.Warnf("Could not send 'exit-status' request (%s)", err)
-		return
+	} else {
+		s.log.Debugf("Successfuly send request 'exit-status' (%d)", code)
 	}
 
-	s.log.Debugf("Successfuly send request 'exit-status' (%d)", code)
 	s.closeChannel(channel)
 }
 
 func (s *Session) closeChannel(channel ssh.Channel) {
-	if s.closed {
+	if s.closed.IsSet() {
 		s.log.Warnf("Channel close called multiple times")
 		return
 	}
-	s.closed = true
+	s.closed.Set()
 
+	s.handlerLock.RLock()
 	if s.handler != nil {
 		if err := s.handler.Close(); err != nil {
 			s.log.Errorf("Could not close handlers (%s)", err)
 		}
 	}
+	s.handlerLock.RUnlock()
 
 	if err := channel.Close(); err != nil {
 		if err.Error() != "EOF" {

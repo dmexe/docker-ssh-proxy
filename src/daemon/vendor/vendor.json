@@ -255,6 +255,12 @@
 			"revisionTime": "2017-01-30T11:31:45Z"
 		},
 		{
+			"checksumSHA1": "gHQ2dBOhcQ77GlEtXSOOkoV7e7A=",
+			"path": "github.com/tevino/abool",
+			"revision": "3c25f2fe7cd0ef3eabefce1d90efd69a65d35b12",
+			"revisionTime": "2016-06-28T10:11:33Z"
+		},
+		{
 			"checksumSHA1": "C1KKOxFoW7/W/NFNpiXK+boguNo=",
 			"path": "golang.org/x/crypto/curve25519",
 			"revision": "453249f01cfeb54c3d549ddb75ff152ca243f9d8",

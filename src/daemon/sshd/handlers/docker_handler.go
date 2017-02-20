@@ -120,7 +120,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 	}
 	h.session = session
 
-	h.log.Debugf("Container session successfuly created %s", session.ID[:10])
+	h.log.Debugf("Container session successfuly created %s (exec=%s)", container.ID[:10], session.ID[:10])
 
 	success := make(chan struct{})
 
@@ -158,7 +158,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 	}
 	h.closer = closer
 
-	h.log.Infof("Container session successfuly started %s", session.ID[:10])
+	h.log.Infof("Container session successfuly started %s (exec=%s)", container.ID[:10], session.ID[:10])
 
 	return nil
 }
