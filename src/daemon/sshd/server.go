@@ -54,7 +54,7 @@ func NewServer(opts CreateServerOptions, handlerFurn handlers.HandlerFunc) (*Ser
 		config:        config,
 		listenAddress: opts.ListenAddr,
 		handlerFunc:   handlerFurn,
-		completed:     make(chan error),
+		completed:     make(chan error, 1),
 		log:           utils.NewLogEntry("sshd.server"),
 	}
 
@@ -90,8 +90,8 @@ func (s *Server) Wait() error {
 	}
 }
 
-// Start server
-func (s *Server) Start() error {
+// Run server
+func (s *Server) Run() error {
 	listener, err := net.Listen("tcp", s.listenAddress)
 	if err != nil {
 		return fmt.Errorf("Failed to listen on %s (%s)", s.listenAddress, err)

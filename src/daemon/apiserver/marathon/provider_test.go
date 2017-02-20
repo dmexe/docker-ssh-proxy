@@ -1,8 +1,8 @@
 package marathon
 
 import (
+	"daemon/apiserver"
 	"daemon/payloads"
-	"daemon/tasks"
 	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"
@@ -39,7 +39,7 @@ func Test_Provider(t *testing.T) {
 		require.Equal(t, "10.1.1.244", inst.Addr.String())
 		require.Equal(t, "2017-02-15 15:41:06.503 +0000 UTC", inst.UpdatedAt.String())
 		require.Equal(t, true, inst.Healthy)
-		require.Equal(t, tasks.TaskStatusRunning, inst.State)
+		require.Equal(t, apiserver.TaskStatusRunning, inst.State)
 		require.Equal(t, payloads.Payload{ContainerEnv: "MESOS_TASK_ID=app_demo.27b10ccc-f395-11e6-9a83-424dbc3181a1"}, inst.Payload)
 	})
 }

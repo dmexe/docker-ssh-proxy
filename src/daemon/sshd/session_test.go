@@ -188,7 +188,7 @@ func newTestServer(t *testing.T, handler handlers.HandlerFunc) *Server {
 	server, err := NewServer(opts, handler)
 	require.NoError(t, err)
 	require.NotNil(t, server)
-	require.NoError(t, server.Start())
+	require.NoError(t, server.Run())
 
 	return server
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"daemon/apiserver"
+	"daemon/apiserver/marathon"
 	"daemon/handlers"
 	"daemon/payloads"
 	"daemon/sshd"
@@ -9,17 +11,20 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 var (
 	privateKeyFile string
 	listenAddress  string
+	marathonURL    string
 	debug          bool
 )
 
 func init() {
 	flag.StringVar(&privateKeyFile, "sshd.pkey", "./id_rsa", "host private key file")
 	flag.StringVar(&listenAddress, "sshd.listen", "0.0.0.0:2200", "listen address")
+	flag.StringVar(&marathonURL, "marathon.url", "http://marathon.mesos:8080", "marathon api url")
 	flag.BoolVar(&debug, "debug", false, "enable debug output")
 	flag.Parse()
 }
@@ -65,7 +70,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := server.Start(); err != nil {
+	if err := server.Run(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -76,7 +81,29 @@ func main() {
 		}
 	}()
 
-	if err := server.Wait(); err != nil {
+	providerOptions := marathon.ProviderOptions{
+		Endpoint: marathonURL,
+	}
+	provider, err := marathon.NewProvider(providerOptions)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	managerOptions := apiserver.ManagerOptions{
+		Provider: provider,
+		Timeout:  10 * time.Second,
+	}
+
+	manager, err := apiserver.NewManager(managerOptions)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := manager.Run(); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := manager.Wait(); err != nil {
 		log.Fatal(err)
 	}
 }

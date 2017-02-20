@@ -1,4 +1,4 @@
-package tasks
+package apiserver
 
 import (
 	"daemon/payloads"
@@ -35,12 +35,12 @@ type Task struct {
 	CPU         float32
 	Mem         uint
 	Constraints map[string]string
-	Instances   []Instance
+	Instances   []TaskInstance
 	UpdatedAt   time.Time
 }
 
-// Instance keeps exported instance fields
-type Instance struct {
+// TaskInstance keeps exported instance fields
+type TaskInstance struct {
 	ID        string
 	Addr      net.IP
 	State     string
