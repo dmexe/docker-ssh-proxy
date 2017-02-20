@@ -8,6 +8,7 @@ import (
 	"daemon/sshd/handlers"
 	"flag"
 	log "github.com/Sirupsen/logrus"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
@@ -60,12 +61,18 @@ func main() {
 		return handlers.NewDockerHandler(dockerClient, payload)
 	}
 
-	serverOptions := sshd.CreateServerOptions{
-		PrivateKeyFile: privateKeyFile,
-		ListenAddr:     listenAddress,
+	privateKey, err := ioutil.ReadFile(privateKeyFile)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	server, err := sshd.NewServer(serverOptions, handler)
+	serverOptions := sshd.ServerOptions{
+		PrivateKey:  privateKey,
+		ListenAddr:  listenAddress,
+		HandlerFunc: handler,
+	}
+
+	server, err := sshd.NewServer(serverOptions)
 	if err != nil {
 		log.Fatal(err)
 	}

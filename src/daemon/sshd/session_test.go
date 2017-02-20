@@ -180,12 +180,13 @@ func closeTestServer(t *testing.T, server *Server) {
 }
 
 func newTestServer(t *testing.T, handler handlers.HandlerFunc) *Server {
-	opts := CreateServerOptions{
-		ListenAddr:      "localhost:0",
-		PrivateKeyBytes: newRsaPrivateKey(),
+	opts := ServerOptions{
+		ListenAddr:  "localhost:0",
+		PrivateKey:  newRsaPrivateKey(),
+		HandlerFunc: handler,
 	}
 
-	server, err := NewServer(opts, handler)
+	server, err := NewServer(opts)
 	require.NoError(t, err)
 	require.NotNil(t, server)
 	require.NoError(t, server.Run())

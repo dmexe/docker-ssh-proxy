@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// CreateSessionOptions keeps parameters for constructor
-type CreateSessionOptions struct {
+// SessionOptions keeps parameters for constructor
+type SessionOptions struct {
 	Conn        *ssh.ServerConn
 	NewChannels <-chan ssh.NewChannel
 	Requests    <-chan *ssh.Request
@@ -33,7 +33,7 @@ type Session struct {
 }
 
 // NewSession creates a new consumer for incoming ssh connection
-func NewSession(options *CreateSessionOptions) *Session {
+func NewSession(options *SessionOptions) *Session {
 	session := &Session{
 		conn:        options.Conn,
 		newChannels: options.NewChannels,

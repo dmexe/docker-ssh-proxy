@@ -6,16 +6,15 @@ import (
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
-	"io/ioutil"
 	"net"
 	"strings"
 )
 
-// CreateServerOptions keeps parameters for server instance
-type CreateServerOptions struct {
-	PrivateKeyFile  string
-	PrivateKeyBytes []byte
-	ListenAddr      string
+// ServerOptions keeps parameters for server instance
+type ServerOptions struct {
+	PrivateKey  []byte
+	ListenAddr  string
+	HandlerFunc handlers.HandlerFunc
 }
 
 // Server implements sshd server
@@ -30,20 +29,12 @@ type Server struct {
 }
 
 // NewServer creates a new sshd server instance using given options and session handlers constructor
-func NewServer(opts CreateServerOptions, handlerFurn handlers.HandlerFunc) (*Server, error) {
+func NewServer(opts ServerOptions) (*Server, error) {
 	config := &ssh.ServerConfig{
 		NoClientAuth: true,
 	}
 
-	if len(opts.PrivateKeyBytes) == 0 {
-		privateBytes, err := ioutil.ReadFile(opts.PrivateKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to load private key %s (%s)", opts.PrivateKeyFile, err)
-		}
-		opts.PrivateKeyBytes = privateBytes
-	}
-
-	private, err := ssh.ParsePrivateKey(opts.PrivateKeyBytes)
+	private, err := ssh.ParsePrivateKey(opts.PrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse private key (%s)", err)
 	}
@@ -53,7 +44,7 @@ func NewServer(opts CreateServerOptions, handlerFurn handlers.HandlerFunc) (*Ser
 	server := &Server{
 		config:        config,
 		listenAddress: opts.ListenAddr,
-		handlerFunc:   handlerFurn,
+		handlerFunc:   opts.HandlerFunc,
 		completed:     make(chan error, 1),
 		log:           utils.NewLogEntry("sshd.server"),
 	}
@@ -125,7 +116,7 @@ func (s *Server) Run() error {
 
 			s.log.Infof("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
 
-			session := NewSession(&CreateSessionOptions{
+			session := NewSession(&SessionOptions{
 				Conn:        sshConn,
 				NewChannels: chans,
 				Requests:    reqs,
