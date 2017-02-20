@@ -29,6 +29,11 @@ func init() {
 	flag.StringVar(&marathonURL, "marathon.url", "http://marathon.mesos:8080", "marathon api url")
 	flag.BoolVar(&debug, "debug", false, "enable debug output")
 	flag.Parse()
+
+	if debug {
+		log.SetLevel(log.DebugLevel)
+		log.Debug("Debug output enabled")
+	}
 }
 
 func handleSignals() chan os.Signal {
@@ -37,25 +42,25 @@ func handleSignals() chan os.Signal {
 	return signals
 }
 
-func main() {
-
-	if debug {
-		log.SetLevel(log.DebugLevel)
-		log.Debug("Debug output enabled")
-	}
-
+func getPayloadParser() payloads.Parser {
 	jwtParser, err := payloads.NewJwtParserFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}
+	return jwtParser
+}
 
-	dockerClient, err := docker.NewClientFromEnv()
+func getDockerClient() *docker.Client {
+	dockerClient, err := handlers.NewDockerClientFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}
+	return dockerClient
+}
 
+func getDockerShellHandler(dockerClient *docker.Client, parser payloads.Parser) handlers.HandlerFunc {
 	handler := func(exec string) (handlers.Handler, error) {
-		payload, err := jwtParser.Parse(exec)
+		payload, err := parser.Parse(exec)
 		if err != nil {
 			return nil, err
 		}
@@ -65,15 +70,22 @@ func main() {
 		})
 	}
 
+	return handler
+}
+
+func getPrivateKey() []byte {
 	privateKey, err := ioutil.ReadFile(privateKeyFile)
 	if err != nil {
 		log.Fatal(err)
 	}
+	return privateKey
+}
 
+func getShellServer(privateKey []byte, handlerFunc handlers.HandlerFunc) *sshd.Server {
 	serverOptions := sshd.ServerOptions{
 		PrivateKey:  privateKey,
 		ListenAddr:  listenAddress,
-		HandlerFunc: handler,
+		HandlerFunc: handlerFunc,
 	}
 
 	server, err := sshd.NewServer(serverOptions)
@@ -81,17 +93,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := server.Run(); err != nil {
-		log.Fatal(err)
-	}
+	return server
+}
 
-	go func() {
-		for sig := range handleSignals() {
-			log.Infof("Got %s signal", sig)
-			server.Close()
-		}
-	}()
-
+func getAPIServerProvider() apiserver.Provider {
 	providerOptions := marathon.ProviderOptions{
 		Endpoint: marathonURL,
 	}
@@ -99,7 +104,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	return provider
+}
 
+func getAPIServerManager(provider apiserver.Provider) *apiserver.Manager {
 	managerOptions := apiserver.ManagerOptions{
 		Provider: provider,
 		Timeout:  10 * time.Second,
@@ -109,12 +117,37 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	return manager
+}
 
-	if err := manager.Run(); err != nil {
+func main() {
+
+	payloadParser := getPayloadParser()
+	dockerClient := getDockerClient()
+	dockerShellHandler := getDockerShellHandler(dockerClient, payloadParser)
+	privateKey := getPrivateKey()
+	shellServer := getShellServer(privateKey, dockerShellHandler)
+
+	apiServerProvider := getAPIServerProvider()
+	apiServerManager := getAPIServerManager(apiServerProvider)
+
+	if err := shellServer.Run(); err != nil {
 		log.Fatal(err)
 	}
 
-	if err := manager.Wait(); err != nil {
+	go func() {
+		for sig := range handleSignals() {
+			log.Infof("Got %s signal", sig)
+			shellServer.Close()
+			apiServerManager.Close()
+		}
+	}()
+
+	if err := apiServerManager.Run(); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := shellServer.Wait(); err != nil {
 		log.Fatal(err)
 	}
 }

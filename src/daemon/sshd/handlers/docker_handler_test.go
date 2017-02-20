@@ -208,7 +208,7 @@ func newTestDockerContainer(t *testing.T, cli *docker.Client, env string, labels
 }
 
 func newTestDockerClient(t *testing.T) *docker.Client {
-	cli, err := docker.NewClientFromEnv()
+	cli, err := NewDockerClientFromEnv()
 
 	require.NoError(t, err)
 	require.NotNil(t, cli)

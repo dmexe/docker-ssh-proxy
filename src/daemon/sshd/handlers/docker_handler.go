@@ -31,6 +31,11 @@ type DockerHandlerOptions struct {
 	Client  *docker.Client
 }
 
+// NewDockerClientFromEnv is an alias for docker.NewClientFromEnv()
+func NewDockerClientFromEnv() (*docker.Client, error) {
+	return docker.NewClientFromEnv()
+}
+
 // NewDockerHandler creates handler for docker requests
 func NewDockerHandler(opts DockerHandlerOptions) (*DockerHandler, error) {
 

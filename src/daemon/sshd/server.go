@@ -82,6 +82,7 @@ func (s *Server) Wait() error {
 }
 
 // Run server
+// TODO: validate token before spawning a new channel
 func (s *Server) Run() error {
 	listener, err := net.Listen("tcp", s.listenAddress)
 	if err != nil {
