@@ -8,6 +8,7 @@ import (
 	"daemon/sshd/handlers"
 	"flag"
 	log "github.com/Sirupsen/logrus"
+	docker "github.com/fsouza/go-dockerclient"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -48,7 +49,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dockerClient, err := handlers.NewDockerClient()
+	dockerClient, err := docker.NewClientFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -58,7 +59,10 @@ func main() {
 		if err != nil {
 			return nil, err
 		}
-		return handlers.NewDockerHandler(dockerClient, payload)
+		return handlers.NewDockerHandler(handlers.DockerHandlerOptions{
+			Client:  dockerClient,
+			Payload: payload,
+		})
 	}
 
 	privateKey, err := ioutil.ReadFile(privateKeyFile)

@@ -28,10 +28,9 @@ func Test_JwtParser(t *testing.T) {
 
 	t.Run("fail on invalid token", func(t *testing.T) {
 		parser := newTestJwtParser(t)
-		payload, err := parser.Parse("")
+		_, err := parser.Parse("")
 
 		require.Error(t, err)
-		require.Nil(t, payload)
 	})
 
 	t.Run("fail on expired token", func(t *testing.T) {
@@ -39,10 +38,9 @@ func Test_JwtParser(t *testing.T) {
 			"exp": time.Now().Add(-1 * time.Second).Unix(),
 		})
 		parser := newTestJwtParser(t)
-		parsed, err := parser.Parse(token)
+		_, err := parser.Parse(token)
 
 		require.Error(t, err)
-		require.Nil(t, parsed)
 	})
 }
 

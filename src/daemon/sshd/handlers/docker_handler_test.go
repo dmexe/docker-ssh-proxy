@@ -22,7 +22,7 @@ func Test_DockerHandler(t *testing.T) {
 	defer removeTestDockerContainer(t, cli, container)
 
 	t.Run("should run interactive session", func(t *testing.T) {
-		payload := &payloads.Payload{
+		payload := payloads.Payload{
 			ContainerID: container.ID,
 		}
 
@@ -68,7 +68,7 @@ func Test_DockerHandler(t *testing.T) {
 	})
 
 	t.Run("should run non interactive session", func(t *testing.T) {
-		payload := &payloads.Payload{
+		payload := payloads.Payload{
 			ContainerID: container.ID,
 		}
 
@@ -95,7 +95,7 @@ func Test_DockerHandler(t *testing.T) {
 	})
 
 	t.Run("should find containers", func(t *testing.T) {
-		simpleHandler := func(t *testing.T, payload *payloads.Payload) {
+		simpleHandler := func(t *testing.T, payload payloads.Payload) {
 			handler := newTestDockerHandler(t, cli, payload)
 			defer closeTestDockerHandler(t, handler)
 
@@ -117,26 +117,26 @@ func Test_DockerHandler(t *testing.T) {
 		}
 
 		t.Run("container.ID", func(t *testing.T) {
-			simpleHandler(t, &payloads.Payload{
+			simpleHandler(t, payloads.Payload{
 				ContainerID: container.ID,
 			})
 		})
 
 		t.Run("container.Env", func(t *testing.T) {
-			simpleHandler(t, &payloads.Payload{
+			simpleHandler(t, payloads.Payload{
 				ContainerEnv: "ENV_NAME=envValue",
 			})
 		})
 
 		t.Run("container.Label", func(t *testing.T) {
-			simpleHandler(t, &payloads.Payload{
+			simpleHandler(t, payloads.Payload{
 				ContainerLabel: "labelName=labelValue",
 			})
 		})
 	})
 
 	t.Run("fail when container not found", func(t *testing.T) {
-		handler := newTestDockerHandler(t, cli, &payloads.Payload{ContainerID: "notFound"})
+		handler := newTestDockerHandler(t, cli, payloads.Payload{ContainerID: "notFound"})
 		defer closeTestDockerHandler(t, handler)
 
 		pipe := utils.NewBytesBackedPipe()
@@ -208,7 +208,7 @@ func newTestDockerContainer(t *testing.T, cli *docker.Client, env string, labels
 }
 
 func newTestDockerClient(t *testing.T) *docker.Client {
-	cli, err := NewDockerClient()
+	cli, err := docker.NewClientFromEnv()
 
 	require.NoError(t, err)
 	require.NotNil(t, cli)
@@ -216,8 +216,11 @@ func newTestDockerClient(t *testing.T) *docker.Client {
 	return cli
 }
 
-func newTestDockerHandler(t *testing.T, cli *docker.Client, payload *payloads.Payload) *DockerHandler {
-	handler, err := NewDockerHandler(cli, payload)
+func newTestDockerHandler(t *testing.T, cli *docker.Client, payload payloads.Payload) *DockerHandler {
+	handler, err := NewDockerHandler(DockerHandlerOptions{
+		Payload: payload,
+		Client:  cli,
+	})
 
 	require.NoError(t, err)
 	require.NotNil(t, handler)

@@ -20,23 +20,30 @@ type DockerHandler struct {
 	container *docker.Container
 	session   *docker.Exec
 	closer    docker.CloseWaiter
-	payload   *payloads.Payload
+	payload   payloads.Payload
 	closed    bool
 	log       *logrus.Entry
 }
 
-// NewDockerClient is an alias for docker.NewClientFromEnv
-func NewDockerClient() (*docker.Client, error) {
-	return docker.NewClientFromEnv()
+// DockerHandlerOptions keeps options for a new handler instance
+type DockerHandlerOptions struct {
+	Payload payloads.Payload
+	Client  *docker.Client
 }
 
 // NewDockerHandler creates handler for docker requests
-func NewDockerHandler(client *docker.Client, payload *payloads.Payload) (*DockerHandler, error) {
+func NewDockerHandler(opts DockerHandlerOptions) (*DockerHandler, error) {
+
+	if opts.Client == nil {
+		return nil, errors.New("DockerHandlerOptions.Client cannot be nil")
+	}
+
 	handler := &DockerHandler{
-		cli:     client,
-		payload: payload,
+		cli:     opts.Client,
+		payload: opts.Payload,
 		log:     utils.NewLogEntry("handler.docker"),
 	}
+
 	return handler, nil
 }
 
