@@ -28,7 +28,7 @@ test: fmt vet lint
 	$(GO) test -cover -race -timeout 1m -v $(PACKAGES)
 
 build.dev: fmt vet lint
-	$(GO) build -race -v -o $(BIN) $(MAIN)
+	$(GO) build -race -o $(BIN) $(MAIN)
 
 build.release:
 	GOOS=linux  GOARCH=amd64 $(GO) build -ldflags "-s -w" -o $(BIN)-Linux-x86_64  $(MAIN)

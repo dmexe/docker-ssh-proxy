@@ -1,6 +1,7 @@
 package sshd
 
 import (
+	"daemon/payloads"
 	"daemon/sshd/handlers"
 	"daemon/utils"
 	"fmt"
@@ -16,6 +17,7 @@ type SessionOptions struct {
 	NewChannels <-chan ssh.NewChannel
 	Requests    <-chan *ssh.Request
 	HandlerFunc handlers.HandlerFunc
+	Payload     payloads.Payload
 }
 
 // Session uses for handing ssh client requests
@@ -30,6 +32,7 @@ type Session struct {
 	exited      bool
 	closed      bool
 	log         *logrus.Entry
+	payload     payloads.Payload
 }
 
 // NewSession creates a new consumer for incoming ssh connection
@@ -39,6 +42,7 @@ func NewSession(options *SessionOptions) *Session {
 		newChannels: options.NewChannels,
 		requests:    options.Requests,
 		handlerFunc: options.HandlerFunc,
+		payload:     options.Payload,
 		log:         utils.NewLogEntry("sshd.session"),
 	}
 	return session
@@ -153,10 +157,11 @@ func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
 	s.handled = true
 
 	handleRequest := &handlers.Request{
-		Tty:    s.handlerTty,
-		Stdin:  channel.(io.Reader),
-		Stdout: channel.(io.Writer),
-		Stderr: channel.Stderr(),
+		Tty:     s.handlerTty,
+		Stdin:   channel.(io.Reader),
+		Stdout:  channel.(io.Writer),
+		Stderr:  channel.Stderr(),
+		Payload: s.payload,
 	}
 
 	if req.Type == "exec" {
@@ -169,9 +174,9 @@ func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
 		handleRequest.Exec = string(execReq)
 	}
 
-	sessionHandler, err := s.handlerFunc(s.conn.User())
+	sessionHandler, err := s.handlerFunc()
 	if err != nil {
-		s.log.Errorf("Could not create handlers (%s)", err)
+		s.log.Errorf("Could not create a new handler (%s)", err)
 		reqReply(req, false, s.log)
 		return
 	}

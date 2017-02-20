@@ -26,7 +26,7 @@ func Test_DockerHandler(t *testing.T) {
 			ContainerID: container.ID,
 		}
 
-		handler := newTestDockerHandler(t, cli, payload)
+		handler := newTestDockerHandler(t, cli)
 		defer closeTestDockerHandler(t, handler)
 
 		tty := &Tty{
@@ -38,10 +38,11 @@ func Test_DockerHandler(t *testing.T) {
 		pipe := utils.NewBytesBackedPipe()
 
 		handleReq := &Request{
-			Tty:    tty,
-			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-			Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
-			Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
+			Tty:     tty,
+			Stdin:   iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+			Stdout:  iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Stderr:  iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
+			Payload: payload,
 		}
 
 		require.NoError(t, handler.Handle(handleReq))
@@ -72,16 +73,17 @@ func Test_DockerHandler(t *testing.T) {
 			ContainerID: container.ID,
 		}
 
-		handler := newTestDockerHandler(t, cli, payload)
+		handler := newTestDockerHandler(t, cli)
 		defer closeTestDockerHandler(t, handler)
 
 		pipe := utils.NewBytesBackedPipe()
 
 		handleReq := &Request{
-			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-			Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
-			Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
-			Exec:   "sh -c \"ls -la ; echo complete.\"",
+			Stdin:   iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+			Stdout:  iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Stderr:  iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
+			Exec:    "sh -c \"ls -la ; echo complete.\"",
+			Payload: payload,
 		}
 
 		require.NoError(t, handler.Handle(handleReq))
@@ -96,16 +98,17 @@ func Test_DockerHandler(t *testing.T) {
 
 	t.Run("should find containers", func(t *testing.T) {
 		simpleHandler := func(t *testing.T, payload payloads.Payload) {
-			handler := newTestDockerHandler(t, cli, payload)
+			handler := newTestDockerHandler(t, cli)
 			defer closeTestDockerHandler(t, handler)
 
 			pipe := utils.NewBytesBackedPipe()
 
 			handleReq := &Request{
-				Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-				Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
-				Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
-				Exec:   "echo complete.",
+				Stdin:   iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+				Stdout:  iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+				Stderr:  iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
+				Exec:    "echo complete.",
+				Payload: payload,
 			}
 
 			require.NoError(t, handler.Handle(handleReq))
@@ -136,16 +139,17 @@ func Test_DockerHandler(t *testing.T) {
 	})
 
 	t.Run("fail when container not found", func(t *testing.T) {
-		handler := newTestDockerHandler(t, cli, payloads.Payload{ContainerID: "notFound"})
+		handler := newTestDockerHandler(t, cli)
 		defer closeTestDockerHandler(t, handler)
 
 		pipe := utils.NewBytesBackedPipe()
 
 		handleReq := &Request{
-			Stdin:  iotest.NewReadLogger("[r]: ", pipe.IoReader()),
-			Stdout: iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
-			Stderr: iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
-			Exec:   "true",
+			Stdin:   iotest.NewReadLogger("[r]: ", pipe.IoReader()),
+			Stdout:  iotest.NewWriteLogger("[w]: ", pipe.IoWriter()),
+			Stderr:  iotest.NewWriteLogger("[e]: ", pipe.IoWriter()),
+			Exec:    "true",
+			Payload: payloads.Payload{ContainerID: "notFound"},
 		}
 
 		err := handler.Handle(handleReq)
@@ -216,10 +220,9 @@ func newTestDockerClient(t *testing.T) *docker.Client {
 	return cli
 }
 
-func newTestDockerHandler(t *testing.T, cli *docker.Client, payload payloads.Payload) *DockerHandler {
+func newTestDockerHandler(t *testing.T, cli *docker.Client) *DockerHandler {
 	handler, err := NewDockerHandler(DockerHandlerOptions{
-		Payload: payload,
-		Client:  cli,
+		Client: cli,
 	})
 
 	require.NoError(t, err)

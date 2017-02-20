@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"daemon/payloads"
 	"io"
 )
 
@@ -19,17 +20,21 @@ type Tty struct {
 
 // Request for handler
 type Request struct {
-	Tty    *Tty
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
-	Exec   string
+	Tty     *Tty
+	Stdin   io.Reader
+	Stdout  io.Writer
+	Stderr  io.Writer
+	Exec    string
+	Payload payloads.Payload
 }
 
 // Response from handler
 type Response struct {
 	Code int
 }
+
+// HandlerFunc is a factory method
+type HandlerFunc func() (Handler, error)
 
 // Handler generic interface
 type Handler interface {
@@ -38,10 +43,6 @@ type Handler interface {
 	Resize(tty *Resize) error
 	Wait() (Response, error)
 }
-
-// HandlerFunc creates a new handler, it's just wrapper around Handler constructors, converts payload string to
-// payloads.Payload  and calls underlayer handler
-type HandlerFunc func(payload string) (Handler, error)
 
 // Resize request from Tty
 func (req *Tty) Resize() *Resize {

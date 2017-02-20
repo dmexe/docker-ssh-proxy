@@ -58,18 +58,12 @@ func getDockerClient() *docker.Client {
 	return dockerClient
 }
 
-func getDockerShellHandler(dockerClient *docker.Client, parser payloads.Parser) handlers.HandlerFunc {
-	handler := func(exec string) (handlers.Handler, error) {
-		payload, err := parser.Parse(exec)
-		if err != nil {
-			return nil, err
-		}
+func getDockerShellHandler(dockerClient *docker.Client) handlers.HandlerFunc {
+	handler := func() (handlers.Handler, error) {
 		return handlers.NewDockerHandler(handlers.DockerHandlerOptions{
-			Client:  dockerClient,
-			Payload: payload,
+			Client: dockerClient,
 		})
 	}
-
 	return handler
 }
 
@@ -81,11 +75,12 @@ func getPrivateKey() []byte {
 	return privateKey
 }
 
-func getShellServer(privateKey []byte, handlerFunc handlers.HandlerFunc) *sshd.Server {
+func getShellServer(privateKey []byte, handlerFunc handlers.HandlerFunc, payloadParser payloads.Parser) *sshd.Server {
 	serverOptions := sshd.ServerOptions{
 		PrivateKey:  privateKey,
 		ListenAddr:  listenAddress,
 		HandlerFunc: handlerFunc,
+		Parser:      payloadParser,
 	}
 
 	server, err := sshd.NewServer(serverOptions)
@@ -124,9 +119,9 @@ func main() {
 
 	payloadParser := getPayloadParser()
 	dockerClient := getDockerClient()
-	dockerShellHandler := getDockerShellHandler(dockerClient, payloadParser)
+	dockerShellHandler := getDockerShellHandler(dockerClient)
 	privateKey := getPrivateKey()
-	shellServer := getShellServer(privateKey, dockerShellHandler)
+	shellServer := getShellServer(privateKey, dockerShellHandler, payloadParser)
 
 	apiServerProvider := getAPIServerProvider()
 	apiServerManager := getAPIServerManager(apiServerProvider)

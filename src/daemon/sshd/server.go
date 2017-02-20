@@ -1,6 +1,7 @@
 package sshd
 
 import (
+	"daemon/payloads"
 	"daemon/sshd/handlers"
 	"daemon/utils"
 	"fmt"
@@ -15,6 +16,7 @@ type ServerOptions struct {
 	PrivateKey  []byte
 	ListenAddr  string
 	HandlerFunc handlers.HandlerFunc
+	Parser      payloads.Parser
 }
 
 // Server implements sshd server
@@ -26,6 +28,7 @@ type Server struct {
 	completed     chan error
 	closed        bool
 	log           *logrus.Entry
+	parser        payloads.Parser
 }
 
 // NewServer creates a new sshd server instance using given options and session handlers constructor
@@ -45,6 +48,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		config:        config,
 		listenAddress: opts.ListenAddr,
 		handlerFunc:   opts.HandlerFunc,
+		parser:        opts.Parser,
 		completed:     make(chan error, 1),
 		log:           utils.NewLogEntry("sshd.server"),
 	}
@@ -82,7 +86,6 @@ func (s *Server) Wait() error {
 }
 
 // Run server
-// TODO: validate token before spawning a new channel
 func (s *Server) Run() error {
 	listener, err := net.Listen("tcp", s.listenAddress)
 	if err != nil {
@@ -117,11 +120,19 @@ func (s *Server) Run() error {
 
 			s.log.Infof("New SSH connection from %s (%s)", sshConn.RemoteAddr(), sshConn.ClientVersion())
 
+			payload, err := s.parser.Parse(sshConn.User())
+			if err != nil {
+				s.log.Warnf("Could not parse payload (%s)", err)
+				s.closeSession(sshConn)
+				continue
+			}
+
 			session := NewSession(&SessionOptions{
 				Conn:        sshConn,
 				NewChannels: chans,
 				Requests:    reqs,
 				HandlerFunc: s.handlerFunc,
+				Payload:     payload,
 			})
 
 			if err := session.Handle(); err != nil {

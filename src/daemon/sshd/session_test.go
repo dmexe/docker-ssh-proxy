@@ -1,6 +1,7 @@
 package sshd
 
 import (
+	"daemon/payloads"
 	"daemon/sshd/handlers"
 	"daemon/utils"
 	"encoding/binary"
@@ -51,7 +52,7 @@ func Test_Session(t *testing.T) {
 	testErr := errors.New("boom")
 
 	t.Run("fail to create shell", func(t *testing.T) {
-		failHandler := func(_ string) (handlers.Handler, error) {
+		failHandler := func() (handlers.Handler, error) {
 			return nil, testErr
 		}
 
@@ -102,7 +103,7 @@ func Test_Session(t *testing.T) {
 }
 
 func newEchoHandler(errors handlers.EchoHandlerErrors) handlers.HandlerFunc {
-	return func(_ string) (handlers.Handler, error) {
+	return func() (handlers.Handler, error) {
 		return handlers.NewEchoHandler(errors), nil
 	}
 }
@@ -184,6 +185,9 @@ func newTestServer(t *testing.T, handler handlers.HandlerFunc) *Server {
 		ListenAddr:  "localhost:0",
 		PrivateKey:  newRsaPrivateKey(),
 		HandlerFunc: handler,
+		Parser: &payloads.EchoParser{
+			Payload: payloads.Payload{},
+		},
 	}
 
 	server, err := NewServer(opts)

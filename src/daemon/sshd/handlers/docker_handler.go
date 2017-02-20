@@ -20,15 +20,13 @@ type DockerHandler struct {
 	container *docker.Container
 	session   *docker.Exec
 	closer    docker.CloseWaiter
-	payload   payloads.Payload
 	closed    bool
 	log       *logrus.Entry
 }
 
 // DockerHandlerOptions keeps options for a new handler instance
 type DockerHandlerOptions struct {
-	Payload payloads.Payload
-	Client  *docker.Client
+	Client *docker.Client
 }
 
 // NewDockerClientFromEnv is an alias for docker.NewClientFromEnv()
@@ -44,9 +42,8 @@ func NewDockerHandler(opts DockerHandlerOptions) (*DockerHandler, error) {
 	}
 
 	handler := &DockerHandler{
-		cli:     opts.Client,
-		payload: opts.Payload,
-		log:     utils.NewLogEntry("handler.docker"),
+		cli: opts.Client,
+		log: utils.NewLogEntry("handler.docker"),
 	}
 
 	return handler, nil
@@ -67,14 +64,14 @@ func (h *DockerHandler) Handle(req *Request) error {
 			return err
 		}
 
-		if h.isMatched(inspect) {
+		if h.isMatched(inspect, req.Payload) {
 			matched = inspect
 			break
 		}
 	}
 
 	if matched == nil {
-		return fmt.Errorf("Could not found container for %v", h.payload)
+		return fmt.Errorf("Could not found container for %v", req.Payload)
 	}
 
 	return h.startSession(matched, req)
@@ -189,23 +186,23 @@ func (h *DockerHandler) Wait() (Response, error) {
 	return Response{Code: inspect.ExitCode}, nil
 }
 
-func (h *DockerHandler) isMatched(container *docker.Container) bool {
-	if len(h.payload.ContainerID) > 8 && strings.HasPrefix(container.ID, h.payload.ContainerID) {
-		h.log.Debugf("Match container by id=%s", container.ID)
+func (h *DockerHandler) isMatched(container *docker.Container, payload payloads.Payload) bool {
+	if len(payload.ContainerID) > 8 && strings.HasPrefix(container.ID, payload.ContainerID) {
+		h.log.Debugf("Container found by id=%s", container.ID)
 		return true
 	}
 
-	if h.payload.ContainerEnv != "" {
+	if payload.ContainerEnv != "" {
 		for _, env := range container.Config.Env {
-			if env == h.payload.ContainerEnv {
-				h.log.Debugf("Match container by env %s id=%s", env, container.ID)
+			if env == payload.ContainerEnv {
+				h.log.Debugf("Countainer found by env %s id=%s", env, container.ID)
 				return true
 			}
 		}
 	}
 
-	if h.payload.ContainerLabel != "" {
-		fields := strings.FieldsFunc(h.payload.ContainerLabel, func(r rune) bool {
+	if payload.ContainerLabel != "" {
+		fields := strings.FieldsFunc(payload.ContainerLabel, func(r rune) bool {
 			return r == '='
 		})
 
@@ -215,7 +212,7 @@ func (h *DockerHandler) isMatched(container *docker.Container) bool {
 
 			for name, value := range container.Config.Labels {
 				if name == fieldName && value == fieldValue {
-					h.log.Debugf("Match container by label %s=%s id=%s", name, value, container.ID)
+					h.log.Debugf("Container found by label %s=%s id=%s", name, value, container.ID)
 					return true
 				}
 			}
