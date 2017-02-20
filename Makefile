@@ -8,8 +8,15 @@ PACKAGES =  $(shell $(GOVENDOR) list -no-status +local)
 
 all: build.dev
 
+debug:
+	echo $(OS)
+
 fmt:
 	$(GO) fmt $(PACKAGES)
+
+build.cross:
+	GOOS=darwin go build $(RELEASE_FLAGS) -o $(DAEMON)-darwin-$(GOARCH) daemon
+	GOOS=linux go build $(RELEASE_FLAGS) -o $(DAEMON)-linux-$(GOARCH) daemon
 
 vet:
 	$(GO) vet $(PACKAGES)
