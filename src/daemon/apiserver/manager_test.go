@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"context"
 	"errors"
 	"github.com/stretchr/testify/require"
 	"sync"
@@ -9,6 +10,9 @@ import (
 )
 
 func Test_Manager(t *testing.T) {
+	ctx := context.Background()
+	var wg sync.WaitGroup
+
 	t.Run("should run and load tasks", func(t *testing.T) {
 		state := []Task{{
 			ID: "id",
@@ -20,16 +24,19 @@ func Test_Manager(t *testing.T) {
 			Providers: []Provider{provider},
 			Interval:  100 * time.Millisecond,
 		}
-		manager, err := NewManager(options)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		manager, err := NewManager(ctx, options)
 		require.NoError(t, err)
 		require.NotNil(t, manager)
 
-		require.NoError(t, manager.Run())
+		require.NoError(t, manager.Run(&wg))
 		time.Sleep(120 * time.Millisecond)
 
 		require.Equal(t, uint64(2), manager.getCounter())
 		require.Len(t, manager.Tasks(), 1)
-		require.NoError(t, manager.Close())
 	})
 
 	t.Run("fail to load tasks", func(t *testing.T) {
@@ -42,31 +49,39 @@ func Test_Manager(t *testing.T) {
 			Interval:  100 * time.Millisecond,
 		}
 
-		manager, err := NewManager(options)
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		manager, err := NewManager(ctx, options)
 		require.NoError(t, err)
 		require.NotNil(t, manager)
-		require.EqualError(t, manager.Run(), "Boom")
+		require.EqualError(t, manager.Run(&wg), "Boom")
 		require.Equal(t, uint64(0), manager.getCounter())
 		require.Empty(t, manager.Tasks())
-		require.NoError(t, manager.Close())
 	})
 
 	t.Run("should run but fail on background loading", func(t *testing.T) {
 		state := []Task{{
 			ID: "id",
 		}}
+
 		provider := &testProvider{
 			state: state,
 		}
+
 		options := ManagerOptions{
 			Providers: []Provider{provider},
 			Interval:  100 * time.Millisecond,
 		}
-		manager, err := NewManager(options)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		manager, err := NewManager(ctx, options)
 		require.NoError(t, err)
 		require.NotNil(t, manager)
 
-		require.NoError(t, manager.Run())
+		require.NoError(t, manager.Run(&wg))
 
 		provider.Lock()
 		provider.err = errors.New("Boom")
@@ -76,7 +91,6 @@ func Test_Manager(t *testing.T) {
 
 		require.Equal(t, uint64(1), manager.getCounter())
 		require.Len(t, manager.Tasks(), 1)
-		require.EqualError(t, manager.Close(), "Boom")
 	})
 }
 
@@ -86,7 +100,7 @@ type testProvider struct {
 	err   error
 }
 
-func (p *testProvider) LoadTasks() ([]Task, error) {
+func (p *testProvider) LoadTasks(_ context.Context) ([]Task, error) {
 	p.Lock()
 	defer p.Unlock()
 	if p.err != nil {

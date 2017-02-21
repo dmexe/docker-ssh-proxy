@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"context"
 	"daemon/payloads"
 	"net"
 	"time"
@@ -25,7 +26,7 @@ const (
 
 // Provider is an interface for task loaders
 type Provider interface {
-	LoadTasks() ([]Task, error)
+	LoadTasks(ctx context.Context) ([]Task, error)
 }
 
 // Task keeps exported task fields and instances

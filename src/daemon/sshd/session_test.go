@@ -1,6 +1,7 @@
 package sshd
 
 import (
+	"context"
 	"daemon/payloads"
 	"daemon/sshd/handlers"
 	"daemon/utils"
@@ -11,16 +12,18 @@ import (
 	"golang.org/x/crypto/ssh"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"testing/iotest"
-	"time"
 )
 
 func Test_Session(t *testing.T) {
 
 	t.Run("should successfuly", func(t *testing.T) {
-		server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{}))
-		defer closeTestServer(t, server)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		server := newTestServer(ctx, t, newEchoHandler(handlers.EchoHandlerErrors{}))
 
 		t.Run("run interactive session", func(t *testing.T) {
 			session, closer := newTestSession(t, server.Addr(), "username")
@@ -56,49 +59,32 @@ func Test_Session(t *testing.T) {
 			return nil, testErr
 		}
 
-		server := newTestServer(t, failHandler)
-		defer closeTestServer(t, server)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		server := newTestServer(ctx, t, failHandler)
 
 		session, closer := newTestSession(t, server.Addr(), "username")
 		defer closer.Close()
 
 		require.NoError(t, requestTty(session))
-		require.Error(t, session.Shell())
+		require.EqualError(t, session.Shell(), "ssh: could not start shell")
 	})
 
 	t.Run("fail to handle request", func(t *testing.T) {
-		server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		server := newTestServer(ctx, t, newEchoHandler(handlers.EchoHandlerErrors{
 			Handle: testErr,
 		}))
-		defer closeTestServer(t, server)
 
 		session, closer := newTestSession(t, server.Addr(), "username")
 		defer closer.Close()
-
-		require.NoError(t, requestTty(session))
-		require.Error(t, session.Shell())
-	})
-
-	t.Run("fail to wait when handle completed", func(t *testing.T) {
-		server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
-			Wait: testErr,
-		}))
-		defer closeTestServer(t, server)
-
-		session, closer := newTestSession(t, server.Addr(), "username")
-		defer closer.Close()
-
-		pipe, err := session.StdinPipe()
-		require.NoError(t, err)
 
 		require.NoError(t, requestTty(session))
 		require.NoError(t, session.Shell())
-
-		time.Sleep(1 * time.Second)
-
-		_, err = pipe.Write([]byte("test"))
-		require.Error(t, err)
-		require.Equal(t, "EOF", err.Error())
+		require.EqualError(t, session.Wait(), "Process exited with status 255")
 	})
 }
 
@@ -170,17 +156,7 @@ func newTestSession(t *testing.T, addr net.Addr, user string) (*ssh.Session, io.
 	return sshSession, sshConn
 }
 
-func closeTestServer(t *testing.T, server *Server) {
-	if err := server.Close(); err != nil {
-		t.Error(err)
-	}
-
-	if err := server.Wait(); err != nil {
-		t.Error(err)
-	}
-}
-
-func newTestServer(t *testing.T, handler handlers.HandlerFunc) *Server {
+func newTestServer(ctx context.Context, t *testing.T, handler handlers.HandlerFunc) *Server {
 	opts := ServerOptions{
 		Host:        "localhost",
 		Port:        0,
@@ -191,10 +167,12 @@ func newTestServer(t *testing.T, handler handlers.HandlerFunc) *Server {
 		},
 	}
 
-	server, err := NewServer(opts)
+	var wg sync.WaitGroup
+
+	server, err := NewServer(ctx, opts)
 	require.NoError(t, err)
 	require.NotNil(t, server)
-	require.NoError(t, server.Run())
+	require.NoError(t, server.Run(&wg))
 
 	return server
 }

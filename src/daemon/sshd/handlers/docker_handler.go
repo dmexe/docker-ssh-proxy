@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"daemon/payloads"
 	"daemon/utils"
 	"errors"
@@ -19,9 +20,8 @@ type DockerHandler struct {
 	cli       *docker.Client
 	container *docker.Container
 	session   *docker.Exec
-	closer    docker.CloseWaiter
-	closed    bool
 	log       *logrus.Entry
+	cancel    context.CancelFunc
 }
 
 // DockerHandlerOptions keeps options for a new handler instance
@@ -38,7 +38,7 @@ func NewDockerClientFromEnv() (*docker.Client, error) {
 func NewDockerHandler(opts DockerHandlerOptions) (*DockerHandler, error) {
 
 	if opts.Client == nil {
-		return nil, errors.New("DockerHandlerOptions.Client cannot be nil")
+		return nil, errors.New("Client cannot be nil")
 	}
 
 	handler := &DockerHandler{
@@ -50,10 +50,10 @@ func NewDockerHandler(opts DockerHandlerOptions) (*DockerHandler, error) {
 }
 
 // Handle given request, looking for container and start docker exec
-func (h *DockerHandler) Handle(req *Request) error {
+func (h *DockerHandler) Handle(ctx context.Context, req *Request) (Response, error) {
 	containers, err := h.cli.ListContainers(docker.ListContainersOptions{})
 	if err != nil {
-		return err
+		return unhandledErrResponse, err
 	}
 
 	var matched *docker.Container
@@ -61,7 +61,7 @@ func (h *DockerHandler) Handle(req *Request) error {
 	for _, container := range containers {
 		inspect, err := h.cli.InspectContainer(container.ID)
 		if err != nil {
-			return err
+			return unhandledErrResponse, err
 		}
 
 		if h.isMatched(inspect, req.Payload) {
@@ -71,14 +71,17 @@ func (h *DockerHandler) Handle(req *Request) error {
 	}
 
 	if matched == nil {
-		return fmt.Errorf("Could not found container for %v", req.Payload)
+		return unhandledErrResponse, fmt.Errorf("Could not found container for %v", req.Payload)
 	}
 
-	return h.startSession(matched, req)
+	return h.startSession(ctx, matched, req)
 }
 
-func (h *DockerHandler) startSession(container *docker.Container, req *Request) error {
+func (h *DockerHandler) startSession(ctx context.Context, container *docker.Container, req *Request) (Response, error) {
 
+	ctx, cancel := context.WithCancel(ctx)
+
+	h.cancel = cancel
 	h.container = container
 
 	createExecOptions := docker.CreateExecOptions{
@@ -88,6 +91,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 		Tty:          false,
 		Cmd:          []string{"/bin/sh"},
 		Container:    container.ID,
+		Context:      ctx,
 	}
 
 	if req.Tty != nil {
@@ -106,7 +110,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 
 		args, err := shlex.Split(req.Exec)
 		if err != nil {
-			return err
+			return unhandledErrResponse, err
 		}
 
 		cmdline = append(cmdline, args...)
@@ -116,7 +120,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 
 	session, err := h.cli.CreateExec(createExecOptions)
 	if err != nil {
-		return err
+		return unhandledErrResponse, err
 	}
 	h.session = session
 
@@ -132,6 +136,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 		Tty:          false,
 		RawTerminal:  false,
 		Success:      success,
+		Context:      ctx,
 	}
 
 	if req.Tty != nil {
@@ -154,31 +159,32 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 
 	closer, err := h.cli.StartExecNonBlocking(session.ID, startExecOptions)
 	if err != nil {
-		return err
+		return unhandledErrResponse, err
 	}
-	h.closer = closer
 
 	h.log.Infof("Container session successfuly started %s (exec=%s)", container.ID[:10], session.ID[:10])
 
-	return nil
-}
+	complete := make(chan error)
 
-// Wait until docker exec finished
-func (h *DockerHandler) Wait() (Response, error) {
-	if h.closer != nil {
-		h.log.Debug("Starting wait for container session response")
-		if err := h.closer.Wait(); err != nil {
-			return Response{Code: 1}, fmt.Errorf("Could wait container session (%s)", err)
+	go func() {
+		complete <- closer.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		h.log.Debugf("Context done")
+		if err := closer.Close(); err != nil {
+			return unhandledErrResponse, fmt.Errorf("Could not close container session=%s (%s)", session.ID, err)
+		}
+	case err := <-complete:
+		if err != nil {
+			return unhandledErrResponse, fmt.Errorf("Could not wait session=%s (%s)", session.ID, err)
 		}
 	}
 
-	if h.session == nil {
-		return Response{Code: 1}, errors.New("Exec instance is undefined")
-	}
-
-	inspect, err := h.cli.InspectExec(h.session.ID)
+	inspect, err := h.cli.InspectExec(session.ID)
 	if err != nil {
-		return Response{Code: 1}, fmt.Errorf("Could not inspect session=%s (%s)", h.session.ID, err)
+		return unhandledErrResponse, fmt.Errorf("Could not inspect session=%s (%s)", session.ID, err)
 	}
 
 	h.log.Debugf("Process exited with code %d", inspect.ExitCode)
@@ -234,20 +240,10 @@ func (h *DockerHandler) Resize(req *Resize) error {
 	return nil
 }
 
-// Close docker exec session
+// Close current session in container
 func (h *DockerHandler) Close() error {
-	if h.closed {
-		h.log.Warnf("Close session called multiple times")
-		return nil
-	}
-	h.closed = true
-
-	if h.session != nil && h.closer != nil {
-		err := h.closer.Close()
-		if err != nil {
-			return fmt.Errorf("Could not close container session (%s)", err)
-		}
-		h.log.Info("Container session successfuly closed")
+	if h.cancel != nil {
+		h.cancel()
 	}
 	return nil
 }

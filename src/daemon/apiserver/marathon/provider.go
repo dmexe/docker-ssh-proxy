@@ -1,6 +1,7 @@
 package marathon
 
 import (
+	"context"
 	"daemon/apiserver"
 	"daemon/payloads"
 	"daemon/utils"
@@ -64,11 +65,16 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 }
 
 // LoadTasks from marathon
-func (p *Provider) LoadTasks() ([]apiserver.Task, error) {
+func (p *Provider) LoadTasks(ctx context.Context) ([]apiserver.Task, error) {
 	endpoint := fmt.Sprintf("%s/apps?embed=apps.tasks", p.url.String())
 	respApps := appsResponse{}
 
-	response, err := p.cli.Get(endpoint)
+	request, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Could not build request (%s)", err)
+	}
+
+	response, err := p.cli.Do(request.WithContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("Could not load marathon apps (%s)", err)
 	}

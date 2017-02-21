@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"context"
 	"daemon/utils"
 	"github.com/Sirupsen/logrus"
 	"sync"
@@ -18,22 +19,19 @@ type Manager struct {
 	providers []Provider
 	interval  time.Duration
 	log       *logrus.Entry
-	completed chan error
-	stop      chan bool
 	tasks     []Task
 	counter   uint64
-	running   bool
 	lock      sync.Mutex
+	ctx       context.Context
 }
 
 // NewManager creates a new manager with given options
-func NewManager(opts ManagerOptions) (*Manager, error) {
+func NewManager(ctx context.Context, opts ManagerOptions) (*Manager, error) {
 	manager := &Manager{
 		providers: opts.Providers,
 		interval:  opts.Interval,
-		completed: make(chan error),
-		stop:      make(chan bool, 1),
 		log:       utils.NewLogEntry("api.manager"),
+		ctx:       ctx,
 	}
 
 	return manager, nil
@@ -47,57 +45,31 @@ func (m *Manager) Tasks() []Task {
 	return m.tasks
 }
 
-// Wait for all jobs complete
-func (m *Manager) Wait() error {
-	if !m.isRunning() {
-		m.log.Warnf("Could not wait, manager isn't running")
-		return nil
-	}
-
-	err := <-m.completed
-	if err == nil {
-		m.log.Info("Manager completed")
-	}
-	return err
-}
-
-// Close manager, stop all jobs
-func (m *Manager) Close() error {
-	if !m.isRunning() {
-		m.log.Warnf("Could not close, manager isn't running")
-		return nil
-	}
-
-	m.stop <- true
-
-	return m.Wait()
-}
-
 // Run pooling
-func (m *Manager) Run() error {
+func (m *Manager) Run(wg *sync.WaitGroup) error {
 
 	if err := m.load(); err != nil {
 		return err
 	}
 
-	m.log.Infof("Manager sucessfully started")
+	m.log.Infof("Manager started")
 
-	m.running = true
+	wg.Add(1)
 
 	go func() {
+		defer wg.Done()
+
 		for {
 			select {
 
-			case <-m.stop:
-				m.completed <- nil
+			case <-m.ctx.Done():
+				m.log.Debug("Context done")
 				return
 
 			case <-time.After(m.interval):
 				if err := m.load(); err != nil {
-					m.completed <- err
-					return
+					m.log.Errorf("Could not load tasks (%s)", err)
 				}
-
 			}
 		}
 	}()
@@ -109,7 +81,7 @@ func (m *Manager) load() error {
 	result := make([]Task, 0)
 
 	for _, provider := range m.providers {
-		tasks, err := provider.LoadTasks()
+		tasks, err := provider.LoadTasks(m.ctx)
 		if err != nil {
 			return err
 		}
@@ -119,9 +91,11 @@ func (m *Manager) load() error {
 	m.log.Debugf("Load %d tasks", len(result))
 
 	m.lock.Lock()
+	defer m.lock.Unlock()
+
 	m.tasks = result
 	m.counter++
-	m.lock.Unlock()
+
 	return nil
 }
 
@@ -129,10 +103,4 @@ func (m *Manager) getCounter() uint64 {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	return m.counter
-}
-
-func (m *Manager) isRunning() bool {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	return m.running
 }

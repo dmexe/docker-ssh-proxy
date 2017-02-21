@@ -1,12 +1,12 @@
 package sshd
 
 import (
+	"context"
 	"daemon/payloads"
 	"daemon/sshd/handlers"
 	"daemon/utils"
 	"fmt"
 	"github.com/Sirupsen/logrus"
-	"github.com/tevino/abool"
 	"golang.org/x/crypto/ssh"
 	"io"
 	"sync"
@@ -30,23 +30,25 @@ type Session struct {
 	handlerFunc handlers.HandlerFunc
 	handlerTty  *handlers.Tty
 	handler     handlers.Handler
-	exited      *abool.AtomicBool
-	closed      *abool.AtomicBool
 	log         *logrus.Entry
 	payload     payloads.Payload
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 // NewSession creates a new consumer for incoming ssh connection
-func NewSession(options *SessionOptions) *Session {
+func NewSession(ctx context.Context, options *SessionOptions) *Session {
+	ctx, cancel := context.WithCancel(ctx)
+
 	session := &Session{
 		conn:        options.Conn,
 		newChannels: options.NewChannels,
 		requests:    options.Requests,
 		handlerFunc: options.HandlerFunc,
 		payload:     options.Payload,
-		log:         utils.NewLogEntry("sshd.session"),
-		closed:      abool.New(),
-		exited:      abool.New(),
+		log:         utils.NewLogEntry("ssh.session"),
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 	return session
 }
@@ -84,23 +86,35 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 	}
 
 	go func() {
-		defer s.closeChannel(channel)
-		defer s.log.Debug("Client closed connection")
 
-		for req := range requests {
-			switch req.Type {
+		for {
+			select {
+			case <-s.ctx.Done():
+				s.log.Debug("Context done")
+				s.closeChannel(channel)
+				return
 
-			case "exec", "shell":
-				s.handleCommandReq(req, channel)
+			case req := <-requests:
 
-			case "pty-req":
-				s.handleTtyReq(req)
+				if req == nil {
+					s.log.Debug("Client closed connection")
+					return
+				}
 
-			case "window-change":
-				s.handleResizeReq(req)
+				switch req.Type {
 
-			default:
-				reqReply(req, false, s.log)
+				case "exec", "shell":
+					s.handleCommandReq(req, channel)
+
+				case "pty-req":
+					s.handleTtyReq(req)
+
+				case "window-change":
+					s.handleResizeReq(req)
+
+				default:
+					reqReply(req, false, s.log)
+				}
 			}
 		}
 	}()
@@ -169,24 +183,18 @@ func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
 
 	s.setHandler(sessionHandler)
 
-	if err := sessionHandler.Handle(handleRequest); err != nil {
-		s.log.Errorf("Could not handle request (%s)", err)
-		reqReply(req, false, s.log)
-		return
-	}
+	go func() {
+		resp, err := sessionHandler.Handle(s.ctx, handleRequest)
+		if err != nil {
+			s.log.Errorf("Could not handle request (%s)", err)
+		}
+		s.sendExitReply(channel, uint32(resp.Code))
+		s.cancel()
+	}()
 
 	reqReply(req, true, s.log)
 
 	s.log.Debugf("Request successfully handled")
-
-	go func() {
-		resp, err := sessionHandler.Wait()
-		if err != nil {
-			s.log.Errorf("Could not wait handler (%s)", err)
-		}
-		s.exitChannel(channel, uint32(resp.Code))
-	}()
-
 }
 
 func (s *Session) handleTtyReq(req *ssh.Request) {
@@ -206,34 +214,15 @@ func (s *Session) handleTtyReq(req *ssh.Request) {
 	reqReply(req, true, s.log)
 }
 
-func (s *Session) exitChannel(channel ssh.Channel, code uint32) {
-	// channel already closed
-	if s.closed.IsSet() {
-		return
-	}
-
-	if s.exited.IsSet() {
-		s.log.Warnf("Channel exit called multiple times")
-		return
-	}
-	s.exited.Set()
-
+func (s *Session) sendExitReply(channel ssh.Channel, code uint32) {
 	if _, err := channel.SendRequest("exit-status", false, buildExitStatus(code)); err != nil {
 		s.log.Warnf("Could not send 'exit-status' request (%s)", err)
 	} else {
 		s.log.Debugf("Successfuly send request 'exit-status' (%d)", code)
 	}
-
-	s.closeChannel(channel)
 }
 
 func (s *Session) closeChannel(channel ssh.Channel) {
-	if s.closed.IsSet() {
-		s.log.Warnf("Channel close called multiple times")
-		return
-	}
-	s.closed.Set()
-
 	if s.isHandled() {
 		if err := s.handler.Close(); err != nil {
 			s.log.Errorf("Could not close handlers (%s)", err)
@@ -247,7 +236,7 @@ func (s *Session) closeChannel(channel ssh.Channel) {
 			s.log.Debugf("Could not close channel (%s)", err)
 		}
 	} else {
-		s.log.Infof("Channel successfuly closed")
+		s.log.Debug("Channel successfuly closed")
 	}
 }
 

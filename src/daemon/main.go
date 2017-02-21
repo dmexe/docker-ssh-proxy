@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"daemon/utils"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 )
 
@@ -24,7 +26,11 @@ func goRunner(r utils.Runnable, complete chan error) {
 }
 
 func main() {
-	cfg := newAppConfig()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+
+	cfg := newAppConfig(ctx)
 	cfg.parseArgs()
 
 	if err := cfg.validate(); err != nil {
@@ -37,11 +43,12 @@ func main() {
 		log.Debug("Debug output enabled")
 	}
 
-	complete := make(chan error, 3)
-
 	if cfg.api.enabled {
 		apiManager := cfg.getAPIManager()
-		go goRunner(apiManager, complete)
+
+		if err := apiManager.Run(&wg); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	if cfg.shell.enabled {
@@ -50,19 +57,19 @@ func main() {
 		dockerShellHandler := cfg.getDockerShellHandler(dockerClient)
 		privateKey := cfg.getPrivateKey()
 		shellServer := cfg.getShellServer(privateKey, dockerShellHandler, payloadParser)
-		go goRunner(shellServer, complete)
+
+		if err := shellServer.Run(&wg); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
-	select {
-	case sig := <-signals:
-		log.Infof("Got %s signal", sig)
+	sig := <-signals
+	log.Infof("Got %s signal", sig)
 
-	case err := <-complete:
-		if err != nil {
-			log.Error(err)
-		}
-	}
+	cancel()
+
+	wg.Wait()
 }

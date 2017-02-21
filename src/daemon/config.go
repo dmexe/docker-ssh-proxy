@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"daemon/apiserver"
 	"daemon/apiserver/marathon"
 	"daemon/payloads"
@@ -61,9 +62,10 @@ type appConfig struct {
 	api   apiConfig
 	debug bool
 	log   *logrus.Entry
+	ctx   context.Context
 }
 
-func newAppConfig() appConfig {
+func newAppConfig(ctx context.Context) appConfig {
 	return appConfig{
 		shell: shellConfig{
 			host:    "0.0.0.0",
@@ -80,6 +82,7 @@ func newAppConfig() appConfig {
 		},
 		debug: false,
 		log:   utils.NewLogEntry("config"),
+		ctx:   ctx,
 	}
 }
 
@@ -159,7 +162,7 @@ func (cfg *appConfig) getShellServer(privateKey []byte, handlerFunc handlers.Han
 		Parser:      payloadParser,
 	}
 
-	server, err := sshd.NewServer(serverOptions)
+	server, err := sshd.NewServer(cfg.ctx, serverOptions)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -190,9 +193,10 @@ func (cfg *appConfig) getAPIManager() *apiserver.Manager {
 		Interval:  cfg.api.manager.interval,
 	}
 
-	manager, err := apiserver.NewManager(managerOptions)
+	manager, err := apiserver.NewManager(cfg.ctx, managerOptions)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	return manager
 }

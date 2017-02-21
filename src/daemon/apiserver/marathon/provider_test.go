@@ -1,6 +1,7 @@
 package marathon
 
 import (
+	"context"
 	"daemon/apiserver"
 	"daemon/payloads"
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,7 @@ func Test_Provider(t *testing.T) {
 		server := newTestMarathonServer(t, "apps.running.json")
 		provider := newTestProvider(t, server.URL)
 
-		providerTasks, err := provider.LoadTasks()
+		providerTasks, err := provider.LoadTasks(context.Background())
 		require.NoError(t, err)
 		require.Len(t, providerTasks, 1)
 

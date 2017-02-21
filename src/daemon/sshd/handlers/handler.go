@@ -1,8 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"daemon/payloads"
 	"io"
+)
+
+var (
+	unhandledErrResponse = Response{Code: 255}
 )
 
 // Resize request
@@ -39,9 +44,8 @@ type HandlerFunc func() (Handler, error)
 // Handler generic interface
 type Handler interface {
 	io.Closer
-	Handle(req *Request) error
+	Handle(ctx context.Context, req *Request) (Response, error)
 	Resize(tty *Resize) error
-	Wait() (Response, error)
 }
 
 // Resize request from Tty

@@ -8,26 +8,21 @@ PACKAGES =  $(shell $(GOVENDOR) list -no-status +local)
 
 all: build.dev
 
-debug:
-	echo $(OS)
-
-fmt:
+check.fmt:
 	$(GO) fmt $(PACKAGES)
 
-build.cross:
-	GOOS=darwin go build $(RELEASE_FLAGS) -o $(DAEMON)-darwin-$(GOARCH) daemon
-	GOOS=linux go build $(RELEASE_FLAGS) -o $(DAEMON)-linux-$(GOARCH) daemon
-
-vet:
+check.vet:
 	$(GO) vet $(PACKAGES)
 
-lint:
+check.lint:
 	$(GOLINT) -set_exit_status $(PACKAGES)
 
-test: fmt vet lint
+check: check.fmt check.vet check.lint
+
+test: check
 	$(GO) test -cover -race -timeout 1m -v $(PACKAGES)
 
-build.dev: fmt vet lint
+build.dev:
 	$(GO) build -race -o $(BIN) $(MAIN)
 
 build.release:
@@ -35,21 +30,21 @@ build.release:
 	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags "-s -w" -o $(BIN)-Darwin-x86_64 $(MAIN)
 
 run: build.dev $(ID_RSA)
-	$(BIN) -sshd.pkey $(ID_RSA) -debug
+	$(BIN) -ssh -ssh.key $(ID_RSA) -api -api.marathon.url http://marathon.mesos:8080/v2 -debug
 
-deps:
+deps.install:
 	bin/install-deps
 	$(GOVENDOR) sync
 
-pkg.list:
+deps.list:
 	bin/install-deps
 	$(GOVENDOR) list
 
-pkg.remove.unused:
+deps.remove.unused:
 	bin/install-deps
 	$(GOVENDOR) remove +unused
 
-pkg.fetch.missing:
+deps.fetch.missing:
 	bin/install-deps
 	$(GOVENDOR) fetch -v +missing
 

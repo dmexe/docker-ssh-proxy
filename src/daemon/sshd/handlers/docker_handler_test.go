@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"daemon/payloads"
 	"daemon/utils"
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"path"
 	"runtime"
@@ -22,6 +24,9 @@ func Test_DockerHandler(t *testing.T) {
 	defer removeTestDockerContainer(t, cli, container)
 
 	t.Run("should run interactive session", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		payload := payloads.Payload{
 			ContainerID: container.ID,
 		}
@@ -45,7 +50,11 @@ func Test_DockerHandler(t *testing.T) {
 			Payload: payload,
 		}
 
-		require.NoError(t, handler.Handle(handleReq))
+		go func() {
+			resp, err := handler.Handle(ctx, handleReq)
+			require.NoError(t, err)
+			require.Equal(t, 0, resp.Code)
+		}()
 
 		// Wait until shell session started, otherwise sometimes got docker error 'containerd: process not found for container'
 		time.Sleep(100 * time.Millisecond)
@@ -58,12 +67,8 @@ func Test_DockerHandler(t *testing.T) {
 		require.NoError(t, pipe.WaitString("complete."))
 		require.NoError(t, handler.Close())
 
-		_, err := handler.Wait()
-		require.NoError(t, err)
-
 		require.Contains(t, pipe.String(), "echo term is $TERM\r\n")
 		require.Contains(t, pipe.String(), "term is xterm\r\n")
-
 		require.Contains(t, pipe.String(), "echo uname is $(uname)\r\n")
 		require.Contains(t, pipe.String(), "uname is Linux\r\n")
 	})
@@ -72,6 +77,9 @@ func Test_DockerHandler(t *testing.T) {
 		payload := payloads.Payload{
 			ContainerID: container.ID,
 		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
 		handler := newTestDockerHandler(t, cli)
 		defer closeTestDockerHandler(t, handler)
@@ -86,20 +94,26 @@ func Test_DockerHandler(t *testing.T) {
 			Payload: payload,
 		}
 
-		require.NoError(t, handler.Handle(handleReq))
+		go func() {
+			resp, err := handler.Handle(ctx, handleReq)
+			require.NoError(t, err)
+			require.Equal(t, 0, resp.Code)
+		}()
+
 		require.NoError(t, pipe.WaitString("complete."))
 		require.NoError(t, handler.Close())
-
-		_, err := handler.Wait()
-		require.NoError(t, err)
 
 		require.Contains(t, pipe.String(), ".dockerenv\n")
 	})
 
 	t.Run("should find containers", func(t *testing.T) {
+
 		simpleHandler := func(t *testing.T, payload payloads.Payload) {
 			handler := newTestDockerHandler(t, cli)
 			defer closeTestDockerHandler(t, handler)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
 			pipe := utils.NewBytesBackedPipe()
 
@@ -111,12 +125,20 @@ func Test_DockerHandler(t *testing.T) {
 				Payload: payload,
 			}
 
-			require.NoError(t, handler.Handle(handleReq))
-			require.NoError(t, pipe.WaitString("complete."))
-			require.NoError(t, handler.Close())
+			complete := make(chan error)
 
-			_, err := handler.Wait()
-			require.NoError(t, err)
+			go func() {
+				_, err := handler.Handle(ctx, handleReq)
+				complete <- err
+			}()
+
+			select {
+			case <-time.After(5 * time.Second):
+				require.FailNow(t, "Could not wait response within 5 seconds")
+			case err := <-complete:
+				require.NoError(t, err)
+				require.NoError(t, pipe.WaitString("complete."))
+			}
 		}
 
 		t.Run("container.ID", func(t *testing.T) {
@@ -140,7 +162,9 @@ func Test_DockerHandler(t *testing.T) {
 
 	t.Run("fail when container not found", func(t *testing.T) {
 		handler := newTestDockerHandler(t, cli)
-		defer closeTestDockerHandler(t, handler)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
 		pipe := utils.NewBytesBackedPipe()
 
@@ -152,15 +176,22 @@ func Test_DockerHandler(t *testing.T) {
 			Payload: payloads.Payload{ContainerID: "notFound"},
 		}
 
-		err := handler.Handle(handleReq)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "Could not found container for")
-		require.NoError(t, handler.Close())
+		complete := make(chan struct{})
 
-		resp, err := handler.Wait()
-		require.Error(t, err)
-		require.Equal(t, 1, resp.Code)
+		go func() {
+			resp, err := handler.Handle(ctx, handleReq)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "Could not found container for")
+			assert.Equal(t, 255, resp.Code)
+			complete <- struct{}{}
+		}()
 
+		select {
+		case <-complete:
+			require.NoError(t, handler.Close())
+		case <-time.After(100 * time.Millisecond):
+			require.FailNow(t, "Could not wait response within 100 mills")
+		}
 	})
 }
 
