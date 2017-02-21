@@ -20,7 +20,7 @@ func Test_Manager(t *testing.T) {
 		provider := &testProvider{
 			state: state,
 		}
-		options := ManagerOptions{
+		options := TasksManagerOptions{
 			Providers: []Provider{provider},
 			Interval:  100 * time.Millisecond,
 		}
@@ -36,7 +36,7 @@ func Test_Manager(t *testing.T) {
 		time.Sleep(120 * time.Millisecond)
 
 		require.Equal(t, uint64(2), manager.getCounter())
-		require.Len(t, manager.Tasks(), 1)
+		require.Len(t, manager.GetTasks(), 1)
 	})
 
 	t.Run("fail to load tasks", func(t *testing.T) {
@@ -44,7 +44,7 @@ func Test_Manager(t *testing.T) {
 			err: errors.New("Boom"),
 		}
 
-		options := ManagerOptions{
+		options := TasksManagerOptions{
 			Providers: []Provider{provider},
 			Interval:  100 * time.Millisecond,
 		}
@@ -57,7 +57,7 @@ func Test_Manager(t *testing.T) {
 		require.NotNil(t, manager)
 		require.EqualError(t, manager.Run(&wg), "Boom")
 		require.Equal(t, uint64(0), manager.getCounter())
-		require.Empty(t, manager.Tasks())
+		require.Empty(t, manager.GetTasks())
 	})
 
 	t.Run("should run but fail on background loading", func(t *testing.T) {
@@ -69,7 +69,7 @@ func Test_Manager(t *testing.T) {
 			state: state,
 		}
 
-		options := ManagerOptions{
+		options := TasksManagerOptions{
 			Providers: []Provider{provider},
 			Interval:  100 * time.Millisecond,
 		}
@@ -90,7 +90,7 @@ func Test_Manager(t *testing.T) {
 		time.Sleep(120 * time.Millisecond)
 
 		require.Equal(t, uint64(1), manager.getCounter())
-		require.Len(t, manager.Tasks(), 1)
+		require.Len(t, manager.GetTasks(), 1)
 	})
 }
 

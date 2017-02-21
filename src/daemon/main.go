@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"daemon/utils"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"os"
@@ -10,20 +9,6 @@ import (
 	"sync"
 	"syscall"
 )
-
-func goRunner(r utils.Runnable, complete chan error) {
-	if err := r.Run(); err != nil {
-		complete <- err
-		return
-	}
-
-	if err := r.Wait(); err != nil {
-		complete <- err
-		return
-	}
-
-	complete <- nil
-}
 
 func main() {
 
@@ -44,7 +29,7 @@ func main() {
 	}
 
 	if cfg.api.enabled {
-		apiManager := cfg.getAPIManager()
+		apiManager := cfg.getTasksManager()
 
 		if err := apiManager.Run(&wg); err != nil {
 			log.Fatal(err)
@@ -70,6 +55,5 @@ func main() {
 	log.Infof("Got %s signal", sig)
 
 	cancel()
-
 	wg.Wait()
 }

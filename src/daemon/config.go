@@ -170,7 +170,7 @@ func (cfg *appConfig) getShellServer(privateKey []byte, handlerFunc handlers.Han
 	return server
 }
 
-func (cfg *appConfig) getAPIProviders() []apiserver.Provider {
+func (cfg *appConfig) getTasksManagerProviders() []apiserver.Provider {
 	providers := make([]apiserver.Provider, 0)
 
 	for _, url := range cfg.api.marathon.urls {
@@ -187,9 +187,9 @@ func (cfg *appConfig) getAPIProviders() []apiserver.Provider {
 	return providers
 }
 
-func (cfg *appConfig) getAPIManager() *apiserver.Manager {
-	managerOptions := apiserver.ManagerOptions{
-		Providers: cfg.getAPIProviders(),
+func (cfg *appConfig) getTasksManager() *apiserver.TasksManager {
+	managerOptions := apiserver.TasksManagerOptions{
+		Providers: cfg.getTasksManagerProviders(),
 		Interval:  cfg.api.manager.interval,
 	}
 

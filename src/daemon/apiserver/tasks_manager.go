@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-// ManagerOptions keeps parameters for a new manager instance
-type ManagerOptions struct {
+// TasksManagerOptions keeps parameters for a new manager instance
+type TasksManagerOptions struct {
 	Providers []Provider
 	Interval  time.Duration
 }
 
-// Manager keeps internal tasks of a manager instance
-type Manager struct {
+// TasksManager keeps internal tasks of a manager instance
+type TasksManager struct {
 	providers []Provider
 	interval  time.Duration
 	log       *logrus.Entry
@@ -26,8 +26,8 @@ type Manager struct {
 }
 
 // NewManager creates a new manager with given options
-func NewManager(ctx context.Context, opts ManagerOptions) (*Manager, error) {
-	manager := &Manager{
+func NewManager(ctx context.Context, opts TasksManagerOptions) (*TasksManager, error) {
+	manager := &TasksManager{
 		providers: opts.Providers,
 		interval:  opts.Interval,
 		log:       utils.NewLogEntry("api.manager"),
@@ -37,22 +37,30 @@ func NewManager(ctx context.Context, opts ManagerOptions) (*Manager, error) {
 	return manager, nil
 }
 
-// Tasks returns tasks tasks
-func (m *Manager) Tasks() []Task {
+// GetTasks returns tasks tasks
+func (m *TasksManager) GetTasks() []Task {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	return m.tasks
 }
 
+func (m *TasksManager) setTasks(tasks []Task) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.tasks = tasks
+	m.counter++
+}
+
 // Run pooling
-func (m *Manager) Run(wg *sync.WaitGroup) error {
+func (m *TasksManager) Run(wg *sync.WaitGroup) error {
 
 	if err := m.load(); err != nil {
 		return err
 	}
 
-	m.log.Infof("Manager started")
+	m.log.Infof("TasksManager started")
 
 	wg.Add(1)
 
@@ -77,7 +85,7 @@ func (m *Manager) Run(wg *sync.WaitGroup) error {
 	return nil
 }
 
-func (m *Manager) load() error {
+func (m *TasksManager) load() error {
 	result := make([]Task, 0)
 
 	for _, provider := range m.providers {
@@ -88,18 +96,13 @@ func (m *Manager) load() error {
 		result = append(result, tasks...)
 	}
 
+	m.setTasks(result)
 	m.log.Debugf("Load %d tasks", len(result))
-
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	m.tasks = result
-	m.counter++
 
 	return nil
 }
 
-func (m *Manager) getCounter() uint64 {
+func (m *TasksManager) getCounter() uint64 {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	return m.counter
