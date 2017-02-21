@@ -50,10 +50,11 @@ func Test_DockerHandler(t *testing.T) {
 			Payload: payload,
 		}
 
+		response := make(chan testResponse)
+
 		go func() {
 			resp, err := handler.Handle(ctx, handleReq)
-			require.NoError(t, err)
-			require.Equal(t, 0, resp.Code)
+			response <- testResponse{resp, err}
 		}()
 
 		// Wait until shell session started, otherwise sometimes got docker error 'containerd: process not found for container'
@@ -71,6 +72,14 @@ func Test_DockerHandler(t *testing.T) {
 		require.Contains(t, pipe.String(), "term is xterm\r\n")
 		require.Contains(t, pipe.String(), "echo uname is $(uname)\r\n")
 		require.Contains(t, pipe.String(), "uname is Linux\r\n")
+
+		select {
+		case resp := <-response:
+			require.NoError(t, resp.err)
+			require.Equal(t, 0, resp.Response.Code)
+		case <-time.After(1 * time.Second):
+			require.FailNow(t, "Could not wait response within 1s")
+		}
 	})
 
 	t.Run("should run non interactive session", func(t *testing.T) {
@@ -94,16 +103,24 @@ func Test_DockerHandler(t *testing.T) {
 			Payload: payload,
 		}
 
+		response := make(chan testResponse)
+
 		go func() {
 			resp, err := handler.Handle(ctx, handleReq)
-			require.NoError(t, err)
-			require.Equal(t, 0, resp.Code)
+			response <- testResponse{resp, err}
 		}()
 
 		require.NoError(t, pipe.WaitString("complete."))
 		require.NoError(t, handler.Close())
-
 		require.Contains(t, pipe.String(), ".dockerenv\n")
+
+		select {
+		case resp := <-response:
+			require.NoError(t, resp.err)
+			require.Equal(t, 0, resp.Response.Code)
+		case <-time.After(1 * time.Second):
+			require.FailNow(t, "Could not wait response within 1s")
+		}
 	})
 
 	t.Run("should find containers", func(t *testing.T) {
@@ -125,19 +142,21 @@ func Test_DockerHandler(t *testing.T) {
 				Payload: payload,
 			}
 
-			complete := make(chan error)
+			response := make(chan testResponse)
 
 			go func() {
-				_, err := handler.Handle(ctx, handleReq)
-				complete <- err
+				resp, err := handler.Handle(ctx, handleReq)
+				response <- testResponse{resp, err}
 			}()
 
+			require.NoError(t, pipe.WaitString("complete."))
+
 			select {
-			case <-time.After(5 * time.Second):
-				require.FailNow(t, "Could not wait response within 5 seconds")
-			case err := <-complete:
-				require.NoError(t, err)
-				require.NoError(t, pipe.WaitString("complete."))
+			case <-time.After(1 * time.Second):
+				require.FailNow(t, "Could not wait response within 1s")
+			case resp := <-response:
+				require.NoError(t, resp.err)
+				require.Equal(t, 0, resp.Response.Code)
 			}
 		}
 
@@ -176,23 +195,29 @@ func Test_DockerHandler(t *testing.T) {
 			Payload: payloads.Payload{ContainerID: "notFound"},
 		}
 
-		complete := make(chan struct{})
+		response := make(chan testResponse)
 
 		go func() {
 			resp, err := handler.Handle(ctx, handleReq)
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "Could not found container for")
-			assert.Equal(t, 255, resp.Code)
-			complete <- struct{}{}
+			response <- testResponse{resp, err}
 		}()
 
+		require.NoError(t, handler.Close())
+
 		select {
-		case <-complete:
-			require.NoError(t, handler.Close())
-		case <-time.After(100 * time.Millisecond):
-			require.FailNow(t, "Could not wait response within 100 mills")
+		case resp := <-response:
+			assert.Error(t, resp.err)
+			assert.Contains(t, resp.err.Error(), "Could not found container for")
+			assert.Equal(t, 255, resp.Response.Code)
+		case <-time.After(1 * time.Second):
+			require.FailNow(t, "Could not wait response within 1s")
 		}
 	})
+}
+
+type testResponse struct {
+	Response Response
+	err      error
 }
 
 func closeTestDockerHandler(t *testing.T, handler *DockerHandler) {
