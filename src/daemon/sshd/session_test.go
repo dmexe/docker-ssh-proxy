@@ -21,9 +21,9 @@ func Test_Session(t *testing.T) {
 
 	t.Run("should successfuly", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
-		server := newTestServer(ctx, t, newEchoHandler(handlers.EchoHandlerErrors{}))
+		var wg sync.WaitGroup
+		server := newTestServer(ctx, t, &wg, newEchoHandler(handlers.EchoHandlerErrors{}))
 
 		t.Run("run interactive session", func(t *testing.T) {
 			session, closer := newTestSession(t, server.Addr(), "username")
@@ -50,6 +50,9 @@ func Test_Session(t *testing.T) {
 			require.NoError(t, session.Start("echo complete."))
 			require.NoError(t, pipe.WaitString("complete."))
 		})
+
+		cancel()
+		wg.Wait()
 	})
 
 	testErr := errors.New("boom")
@@ -59,23 +62,28 @@ func Test_Session(t *testing.T) {
 			return nil, testErr
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		var wg sync.WaitGroup
 
-		server := newTestServer(ctx, t, failHandler)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		server := newTestServer(ctx, t, &wg, failHandler)
 
 		session, closer := newTestSession(t, server.Addr(), "username")
 		defer closer.Close()
 
 		require.NoError(t, requestTty(session))
 		require.EqualError(t, session.Shell(), "ssh: could not start shell")
+
+		cancel()
+		wg.Wait()
 	})
 
 	t.Run("fail to handle request", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
-		server := newTestServer(ctx, t, newEchoHandler(handlers.EchoHandlerErrors{
+		var wg sync.WaitGroup
+
+		server := newTestServer(ctx, t, &wg, newEchoHandler(handlers.EchoHandlerErrors{
 			Handle: testErr,
 		}))
 
@@ -85,6 +93,9 @@ func Test_Session(t *testing.T) {
 		require.NoError(t, requestTty(session))
 		require.NoError(t, session.Shell())
 		require.EqualError(t, session.Wait(), "Process exited with status 255")
+
+		cancel()
+		wg.Wait()
 	})
 }
 
@@ -156,7 +167,7 @@ func newTestSession(t *testing.T, addr net.Addr, user string) (*ssh.Session, io.
 	return sshSession, sshConn
 }
 
-func newTestServer(ctx context.Context, t *testing.T, handler handlers.HandlerFunc) *Server {
+func newTestServer(ctx context.Context, t *testing.T, wg *sync.WaitGroup, handler handlers.HandlerFunc) *Server {
 	opts := ServerOptions{
 		Host:        "localhost",
 		Port:        0,
@@ -167,12 +178,10 @@ func newTestServer(ctx context.Context, t *testing.T, handler handlers.HandlerFu
 		},
 	}
 
-	var wg sync.WaitGroup
-
 	server, err := NewServer(ctx, opts)
 	require.NoError(t, err)
 	require.NotNil(t, server)
-	require.NoError(t, server.Run(&wg))
+	require.NoError(t, server.Run(wg))
 
 	return server
 }

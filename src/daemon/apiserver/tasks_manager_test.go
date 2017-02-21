@@ -11,9 +11,10 @@ import (
 
 func Test_Manager(t *testing.T) {
 	ctx := context.Background()
-	var wg sync.WaitGroup
 
 	t.Run("should run and load tasks", func(t *testing.T) {
+		var wg sync.WaitGroup
+
 		state := []Task{{
 			ID: "id",
 		}}
@@ -26,7 +27,6 @@ func Test_Manager(t *testing.T) {
 		}
 
 		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
 
 		manager, err := NewManager(ctx, options)
 		require.NoError(t, err)
@@ -37,9 +37,14 @@ func Test_Manager(t *testing.T) {
 
 		require.Equal(t, uint64(2), manager.getCounter())
 		require.Len(t, manager.GetTasks(), 1)
+
+		cancel()
+		wg.Wait()
 	})
 
 	t.Run("fail to load tasks", func(t *testing.T) {
+		var wg sync.WaitGroup
+
 		provider := &testProvider{
 			err: errors.New("Boom"),
 		}
@@ -50,7 +55,6 @@ func Test_Manager(t *testing.T) {
 		}
 
 		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
 
 		manager, err := NewManager(ctx, options)
 		require.NoError(t, err)
@@ -58,9 +62,14 @@ func Test_Manager(t *testing.T) {
 		require.EqualError(t, manager.Run(&wg), "Boom")
 		require.Equal(t, uint64(0), manager.getCounter())
 		require.Empty(t, manager.GetTasks())
+
+		cancel()
+		wg.Wait()
 	})
 
 	t.Run("should run but fail on background loading", func(t *testing.T) {
+		var wg sync.WaitGroup
+
 		state := []Task{{
 			ID: "id",
 		}}
@@ -75,7 +84,6 @@ func Test_Manager(t *testing.T) {
 		}
 
 		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
 
 		manager, err := NewManager(ctx, options)
 		require.NoError(t, err)
@@ -91,6 +99,9 @@ func Test_Manager(t *testing.T) {
 
 		require.Equal(t, uint64(1), manager.getCounter())
 		require.Len(t, manager.GetTasks(), 1)
+
+		cancel()
+		wg.Wait()
 	})
 }
 

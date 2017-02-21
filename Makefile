@@ -21,6 +21,7 @@ check: check.fmt check.vet check.lint
 
 test: check
 	$(GO) test -cover -race -timeout 1m -v $(PACKAGES)
+	@echo "OK"
 
 build.dev:
 	$(GO) build -race -o $(BIN) $(MAIN)
@@ -32,20 +33,17 @@ build.release:
 run: build.dev $(ID_RSA)
 	$(BIN) -ssh -ssh.key $(ID_RSA) -api -api.marathon.url http://marathon.mesos:8080/v2 -debug
 
-deps.install:
+deps:
 	bin/install-deps
 	$(GOVENDOR) sync
 
 deps.list:
-	bin/install-deps
 	$(GOVENDOR) list
 
 deps.remove.unused:
-	bin/install-deps
 	$(GOVENDOR) remove +unused
 
 deps.fetch.missing:
-	bin/install-deps
 	$(GOVENDOR) fetch -v +missing
 
 $(ID_RSA):

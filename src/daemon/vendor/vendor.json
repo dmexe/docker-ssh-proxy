@@ -207,10 +207,10 @@
 			"revisionTime": "2017-01-27T09:51:30Z"
 		},
 		{
-			"checksumSHA1": "eMfNr6Dh+k5dLH8SVt4BMnOoeI8=",
+			"checksumSHA1": "/wGNBzRJdmss307xZyBfYaE0c7Q=",
 			"path": "github.com/fsouza/go-dockerclient",
-			"revision": "50724541fde5c77c754caf1d65d3c57e3e91883b",
-			"revisionTime": "2017-02-15T13:24:27Z"
+			"revision": "54fbd1ff920ca5fd5ec53068d513c14c3a25bba9",
+			"revisionTime": "2017-02-21T19:53:20Z"
 		},
 		{
 			"checksumSHA1": "e/Kc2UOy1lKAy31xWlK37M1r2e8=",
@@ -253,12 +253,6 @@
 			"path": "github.com/stretchr/testify/require",
 			"revision": "4d4bfba8f1d1027c4fdbe371823030df51419987",
 			"revisionTime": "2017-01-30T11:31:45Z"
-		},
-		{
-			"checksumSHA1": "gHQ2dBOhcQ77GlEtXSOOkoV7e7A=",
-			"path": "github.com/tevino/abool",
-			"revision": "3c25f2fe7cd0ef3eabefce1d90efd69a65d35b12",
-			"revisionTime": "2016-06-28T10:11:33Z"
 		},
 		{
 			"checksumSHA1": "C1KKOxFoW7/W/NFNpiXK+boguNo=",
