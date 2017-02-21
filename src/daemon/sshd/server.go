@@ -13,7 +13,8 @@ import (
 // ServerOptions keeps parameters for server instance
 type ServerOptions struct {
 	PrivateKey  []byte
-	ListenAddr  string
+	Host        string
+	Port        uint
 	HandlerFunc handlers.HandlerFunc
 	Parser      payloads.Parser
 }
@@ -45,7 +46,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 
 	server := &Server{
 		config:        config,
-		listenAddress: opts.ListenAddr,
+		listenAddress: fmt.Sprintf("%s:%d", opts.Host, opts.Port),
 		handlerFunc:   opts.HandlerFunc,
 		parser:        opts.Parser,
 		completed:     make(chan error, 1),

@@ -51,9 +51,11 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 		return nil, fmt.Errorf("Could not parse endpoint url '%s' (%s)", options.Endpoint, err)
 	}
 
+	endpointURL.Path = strings.TrimSuffix(endpointURL.Path, "/")
+
 	m := &Provider{
 		url: *endpointURL,
-		log: utils.NewLogEntry("provider.marathon"),
+		log: utils.NewLogEntry("api.marathon").WithField("url", endpointURL.String()),
 		cli: &http.Client{
 			Timeout: time.Duration(5 * time.Second),
 		},
@@ -63,7 +65,7 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 
 // LoadTasks from marathon
 func (p *Provider) LoadTasks() ([]apiserver.Task, error) {
-	endpoint := fmt.Sprintf("%s/v2/apps?embed=apps.tasks", p.url.String())
+	endpoint := fmt.Sprintf("%s/apps?embed=apps.tasks", p.url.String())
 	respApps := appsResponse{}
 
 	response, err := p.cli.Get(endpoint)

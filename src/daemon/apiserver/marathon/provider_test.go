@@ -69,7 +69,7 @@ func newTestMarathonServer(t *testing.T, fixtureName string) *httptest.Server {
 	}
 
 	mx := http.NewServeMux()
-	mx.Handle("/v2/apps", handler)
+	mx.Handle("/apps", handler)
 
 	return httptest.NewServer(mx)
 }

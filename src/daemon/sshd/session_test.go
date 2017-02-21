@@ -182,7 +182,8 @@ func closeTestServer(t *testing.T, server *Server) {
 
 func newTestServer(t *testing.T, handler handlers.HandlerFunc) *Server {
 	opts := ServerOptions{
-		ListenAddr:  "localhost:0",
+		Host:        "localhost",
+		Port:        0,
 		PrivateKey:  newRsaPrivateKey(),
 		HandlerFunc: handler,
 		Parser: &payloads.EchoParser{

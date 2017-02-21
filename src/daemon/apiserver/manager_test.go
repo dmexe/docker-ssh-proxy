@@ -17,8 +17,8 @@ func Test_Manager(t *testing.T) {
 			state: state,
 		}
 		options := ManagerOptions{
-			Provider: provider,
-			Timeout:  100 * time.Millisecond,
+			Providers: []Provider{provider},
+			Interval:  100 * time.Millisecond,
 		}
 		manager, err := NewManager(options)
 		require.NoError(t, err)
@@ -38,8 +38,8 @@ func Test_Manager(t *testing.T) {
 		}
 
 		options := ManagerOptions{
-			Provider: provider,
-			Timeout:  100 * time.Millisecond,
+			Providers: []Provider{provider},
+			Interval:  100 * time.Millisecond,
 		}
 
 		manager, err := NewManager(options)
@@ -59,8 +59,8 @@ func Test_Manager(t *testing.T) {
 			state: state,
 		}
 		options := ManagerOptions{
-			Provider: provider,
-			Timeout:  100 * time.Millisecond,
+			Providers: []Provider{provider},
+			Interval:  100 * time.Millisecond,
 		}
 		manager, err := NewManager(options)
 		require.NoError(t, err)

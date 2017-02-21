@@ -1,0 +1,198 @@
+package main
+
+import (
+	"daemon/apiserver"
+	"daemon/apiserver/marathon"
+	"daemon/payloads"
+	"daemon/sshd"
+	"daemon/sshd/handlers"
+	"daemon/utils"
+	"errors"
+	"flag"
+	"github.com/Sirupsen/logrus"
+	"github.com/fsouza/go-dockerclient"
+	"io/ioutil"
+	"log"
+	"strings"
+	"time"
+)
+
+type apiMarathonConfig struct {
+	urls []string
+}
+
+func (m *apiMarathonConfig) description() string {
+	return `The Marathon API prefix. This prefix depends on your Marathon configuration.
+	For example, running Marathon locally, the API is available at localhost:8080/v2/,
+	while the default setup on AWS/DCOS is  $(dcos config show core.dcos_url)/marathon/v2/apps.
+	(Can be specified multiple times)`
+}
+
+func (m *apiMarathonConfig) String() string {
+	return strings.Join(m.urls, " ")
+}
+
+func (m *apiMarathonConfig) Set(value string) error {
+	m.urls = append(m.urls, value)
+	return nil
+}
+
+type shellConfig struct {
+	host    string
+	port    uint
+	keyFile string
+	enabled bool
+}
+
+type apiManagerConfig struct {
+	interval time.Duration
+}
+
+type apiConfig struct {
+	host     string
+	port     uint
+	marathon apiMarathonConfig
+	manager  apiManagerConfig
+	enabled  bool
+}
+
+type appConfig struct {
+	shell shellConfig
+	api   apiConfig
+	debug bool
+	log   *logrus.Entry
+}
+
+func newAppConfig() appConfig {
+	return appConfig{
+		shell: shellConfig{
+			host:    "0.0.0.0",
+			port:    2200,
+			keyFile: "./id_rsa",
+		},
+		api: apiConfig{
+			host:     "0.0.0.0",
+			port:     2201,
+			marathon: apiMarathonConfig{},
+			manager: apiManagerConfig{
+				interval: time.Duration(time.Minute),
+			},
+		},
+		debug: false,
+		log:   utils.NewLogEntry("config"),
+	}
+}
+
+func (cfg *appConfig) parseArgs() {
+	// ssh config
+	flag.StringVar(&cfg.shell.host, "ssh.host", cfg.shell.host, "The local addresses ssh should listen on")
+	flag.UintVar(&cfg.shell.port, "ssh.port", cfg.shell.port, "The port number that ssh listens on")
+	flag.StringVar(&cfg.shell.keyFile, "ssh.key", cfg.shell.keyFile, "The file containing a private host key used by ssh")
+	flag.BoolVar(&cfg.shell.enabled, "ssh", cfg.shell.enabled, "Start the ssh server")
+
+	// api server config
+	flag.StringVar(&cfg.api.host, "api.host", cfg.api.host, "The local addresses api server should listen on")
+	flag.UintVar(&cfg.api.port, "api.port", cfg.api.port, "The port number that api server listens on")
+	flag.Var(&cfg.api.marathon, "api.marathon.url", cfg.api.marathon.description())
+	flag.DurationVar(&cfg.api.manager.interval, "api.manager.interval", cfg.api.manager.interval, "The pool interval")
+	flag.BoolVar(&cfg.api.enabled, "api", cfg.shell.enabled, "Start the api server")
+
+	// common
+	flag.BoolVar(&cfg.debug, "debug", false, "Enable debug output")
+
+	flag.Parse()
+}
+
+func (cfg *appConfig) validate() error {
+	if cfg.api.enabled {
+		if len(cfg.api.marathon.urls) == 0 {
+			return errors.New("API server enabled, but no urls specified, please add at least one [-api.marathon.url] flag")
+		}
+	}
+
+	if !cfg.api.enabled && !cfg.shell.enabled {
+		return errors.New("No listeners, please add at least one of this flags [-ssh] [-api]")
+	}
+
+	return nil
+}
+
+func (cfg *appConfig) getPayloadParser() payloads.Parser {
+	jwtParser, err := payloads.NewJwtParserFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return jwtParser
+}
+
+func (cfg *appConfig) getDockerClient() *docker.Client {
+	dockerClient, err := handlers.NewDockerClientFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return dockerClient
+}
+
+func (cfg *appConfig) getDockerShellHandler(dockerClient *docker.Client) handlers.HandlerFunc {
+	handler := func() (handlers.Handler, error) {
+		return handlers.NewDockerHandler(handlers.DockerHandlerOptions{
+			Client: dockerClient,
+		})
+	}
+	return handler
+}
+
+func (cfg *appConfig) getPrivateKey() []byte {
+	privateKey, err := ioutil.ReadFile(cfg.shell.keyFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return privateKey
+}
+
+func (cfg *appConfig) getShellServer(privateKey []byte, handlerFunc handlers.HandlerFunc, payloadParser payloads.Parser) *sshd.Server {
+	serverOptions := sshd.ServerOptions{
+		PrivateKey:  privateKey,
+		Host:        cfg.shell.host,
+		Port:        cfg.shell.port,
+		HandlerFunc: handlerFunc,
+		Parser:      payloadParser,
+	}
+
+	server, err := sshd.NewServer(serverOptions)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return server
+}
+
+func (cfg *appConfig) getAPIProviders() []apiserver.Provider {
+	providers := make([]apiserver.Provider, 0)
+
+	for _, url := range cfg.api.marathon.urls {
+		providerOptions := marathon.ProviderOptions{
+			Endpoint: url,
+		}
+		provider, err := marathon.NewProvider(providerOptions)
+		if err != nil {
+			log.Fatal(err)
+		}
+		providers = append(providers, provider)
+	}
+
+	return providers
+}
+
+func (cfg *appConfig) getAPIManager() *apiserver.Manager {
+	managerOptions := apiserver.ManagerOptions{
+		Providers: cfg.getAPIProviders(),
+		Interval:  cfg.api.manager.interval,
+	}
+
+	manager, err := apiserver.NewManager(managerOptions)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return manager
+}

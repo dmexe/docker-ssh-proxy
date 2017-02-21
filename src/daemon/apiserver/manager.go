@@ -4,37 +4,36 @@ import (
 	"daemon/utils"
 	"github.com/Sirupsen/logrus"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
 // ManagerOptions keeps parameters for a new manager instance
 type ManagerOptions struct {
-	Provider Provider
-	Timeout  time.Duration
+	Providers []Provider
+	Interval  time.Duration
 }
 
 // Manager keeps internal tasks of a manager instance
 type Manager struct {
-	sync.RWMutex
-	provider  Provider
-	timeout   time.Duration
+	providers []Provider
+	interval  time.Duration
 	log       *logrus.Entry
 	completed chan error
 	stop      chan bool
 	tasks     []Task
 	counter   uint64
 	running   bool
+	lock      sync.Mutex
 }
 
 // NewManager creates a new manager with given options
 func NewManager(opts ManagerOptions) (*Manager, error) {
 	manager := &Manager{
-		provider:  opts.Provider,
-		timeout:   opts.Timeout,
-		completed: make(chan error, 1),
+		providers: opts.Providers,
+		interval:  opts.Interval,
+		completed: make(chan error),
 		stop:      make(chan bool, 1),
-		log:       utils.NewLogEntry("tasks.manager"),
+		log:       utils.NewLogEntry("api.manager"),
 	}
 
 	return manager, nil
@@ -42,33 +41,35 @@ func NewManager(opts ManagerOptions) (*Manager, error) {
 
 // Tasks returns tasks tasks
 func (m *Manager) Tasks() []Task {
-	m.RLock()
-	defer m.RUnlock()
+	m.lock.Lock()
+	defer m.lock.Unlock()
 
 	return m.tasks
 }
 
 // Wait for all jobs complete
 func (m *Manager) Wait() error {
-	if !m.running {
+	if !m.isRunning() {
 		m.log.Warnf("Could not wait, manager isn't running")
 		return nil
 	}
 
-	select {
-	case err := <-m.completed:
-		return err
+	err := <-m.completed
+	if err == nil {
+		m.log.Info("Manager completed")
 	}
+	return err
 }
 
 // Close manager, stop all jobs
 func (m *Manager) Close() error {
-	if !m.running {
+	if !m.isRunning() {
 		m.log.Warnf("Could not close, manager isn't running")
 		return nil
 	}
 
 	m.stop <- true
+
 	return m.Wait()
 }
 
@@ -79,19 +80,24 @@ func (m *Manager) Run() error {
 		return err
 	}
 
+	m.log.Infof("Manager sucessfully started")
+
 	m.running = true
 
 	go func() {
 		for {
 			select {
+
 			case <-m.stop:
 				m.completed <- nil
 				return
-			case <-time.After(m.timeout):
+
+			case <-time.After(m.interval):
 				if err := m.load(); err != nil {
 					m.completed <- err
 					return
 				}
+
 			}
 		}
 	}()
@@ -100,18 +106,33 @@ func (m *Manager) Run() error {
 }
 
 func (m *Manager) load() error {
-	tasks, err := m.provider.LoadTasks()
-	if err != nil {
-		return err
+	result := make([]Task, 0)
+
+	for _, provider := range m.providers {
+		tasks, err := provider.LoadTasks()
+		if err != nil {
+			return err
+		}
+		result = append(result, tasks...)
 	}
-	m.Lock()
-	m.log.Debugf("Load %d tasks", len(tasks))
-	m.tasks = tasks
-	m.Unlock()
-	atomic.AddUint64(&m.counter, 1)
+
+	m.log.Debugf("Load %d tasks", len(result))
+
+	m.lock.Lock()
+	m.tasks = result
+	m.counter++
+	m.lock.Unlock()
 	return nil
 }
 
 func (m *Manager) getCounter() uint64 {
-	return atomic.LoadUint64(&m.counter)
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.counter
+}
+
+func (m *Manager) isRunning() bool {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.running
 }
