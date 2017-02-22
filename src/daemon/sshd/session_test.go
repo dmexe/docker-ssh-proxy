@@ -1,7 +1,9 @@
 package sshd
 
 import (
-	"daemon/handlers"
+	"context"
+	"daemon/payloads"
+	"daemon/sshd/handlers"
 	"daemon/utils"
 	"encoding/binary"
 	"errors"
@@ -10,16 +12,18 @@ import (
 	"golang.org/x/crypto/ssh"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"testing/iotest"
-	"time"
 )
 
 func Test_Session(t *testing.T) {
 
 	t.Run("should successfuly", func(t *testing.T) {
-		server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{}))
-		defer closeTestServer(t, server)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		var wg sync.WaitGroup
+		server := newTestServer(ctx, t, &wg, newEchoHandler(handlers.EchoHandlerErrors{}))
 
 		t.Run("run interactive session", func(t *testing.T) {
 			session, closer := newTestSession(t, server.Addr(), "username")
@@ -46,63 +50,57 @@ func Test_Session(t *testing.T) {
 			require.NoError(t, session.Start("echo complete."))
 			require.NoError(t, pipe.WaitString("complete."))
 		})
+
+		cancel()
+		wg.Wait()
 	})
 
 	testErr := errors.New("boom")
 
 	t.Run("fail to create shell", func(t *testing.T) {
-		failHandler := func(_ string) (handlers.Handler, error) {
+		failHandler := func() (handlers.Handler, error) {
 			return nil, testErr
 		}
 
-		server := newTestServer(t, failHandler)
-		defer closeTestServer(t, server)
+		var wg sync.WaitGroup
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		server := newTestServer(ctx, t, &wg, failHandler)
 
 		session, closer := newTestSession(t, server.Addr(), "username")
 		defer closer.Close()
 
 		require.NoError(t, requestTty(session))
-		require.Error(t, session.Shell())
+		require.EqualError(t, session.Shell(), "ssh: could not start shell")
+
+		cancel()
+		wg.Wait()
 	})
 
 	t.Run("fail to handle request", func(t *testing.T) {
-		server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
+		ctx, cancel := context.WithCancel(context.Background())
+
+		var wg sync.WaitGroup
+
+		server := newTestServer(ctx, t, &wg, newEchoHandler(handlers.EchoHandlerErrors{
 			Handle: testErr,
 		}))
-		defer closeTestServer(t, server)
 
 		session, closer := newTestSession(t, server.Addr(), "username")
 		defer closer.Close()
-
-		require.NoError(t, requestTty(session))
-		require.Error(t, session.Shell())
-	})
-
-	t.Run("fail to wait when handle completed", func(t *testing.T) {
-		server := newTestServer(t, newEchoHandler(handlers.EchoHandlerErrors{
-			Wait: testErr,
-		}))
-		defer closeTestServer(t, server)
-
-		session, closer := newTestSession(t, server.Addr(), "username")
-		defer closer.Close()
-
-		pipe, err := session.StdinPipe()
-		require.NoError(t, err)
 
 		require.NoError(t, requestTty(session))
 		require.NoError(t, session.Shell())
+		require.EqualError(t, session.Wait(), "Process exited with status 255")
 
-		time.Sleep(1 * time.Second)
-
-		_, err = pipe.Write([]byte("test"))
-		require.Error(t, err)
-		require.Equal(t, "EOF", err.Error())
+		cancel()
+		wg.Wait()
 	})
 }
 
 func newEchoHandler(errors handlers.EchoHandlerErrors) handlers.HandlerFunc {
-	return func(_ string) (handlers.Handler, error) {
+	return func() (handlers.Handler, error) {
 		return handlers.NewEchoHandler(errors), nil
 	}
 }
@@ -169,26 +167,21 @@ func newTestSession(t *testing.T, addr net.Addr, user string) (*ssh.Session, io.
 	return sshSession, sshConn
 }
 
-func closeTestServer(t *testing.T, server *Server) {
-	if err := server.Close(); err != nil {
-		t.Error(err)
+func newTestServer(ctx context.Context, t *testing.T, wg *sync.WaitGroup, handler handlers.HandlerFunc) *Server {
+	opts := ServerOptions{
+		Host:        "localhost",
+		Port:        0,
+		PrivateKey:  newRsaPrivateKey(),
+		HandlerFunc: handler,
+		Parser: &payloads.EchoParser{
+			Payload: payloads.Payload{},
+		},
 	}
 
-	if err := server.Wait(); err != nil {
-		t.Error(err)
-	}
-}
-
-func newTestServer(t *testing.T, handler handlers.HandlerFunc) *Server {
-	opts := CreateServerOptions{
-		ListenAddr:      "localhost:0",
-		PrivateKeyBytes: newRsaPrivateKey(),
-	}
-
-	server, err := NewServer(opts, handler)
+	server, err := NewServer(ctx, opts)
 	require.NoError(t, err)
 	require.NotNil(t, server)
-	require.NoError(t, server.Start())
+	require.NoError(t, server.Run(wg))
 
 	return server
 }

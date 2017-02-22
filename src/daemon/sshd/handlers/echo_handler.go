@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"daemon/utils"
 	"github.com/Sirupsen/logrus"
 	"io"
@@ -30,9 +31,9 @@ func NewEchoHandler(errors EchoHandlerErrors) *EchoHandler {
 }
 
 // Handle request, just copy stdin to stdout
-func (h *EchoHandler) Handle(req *Request) error {
+func (h *EchoHandler) Handle(_ context.Context, req *Request) (Response, error) {
 	if h.errors.Handle != nil {
-		return h.errors.Handle
+		return errResponse, h.errors.Handle
 	}
 
 	go func() {
@@ -45,32 +46,21 @@ func (h *EchoHandler) Handle(req *Request) error {
 
 	if req.Exec != "" {
 		if _, err := req.Stdout.Write([]byte(req.Exec)); err != nil {
-			return err
+			return errResponse, err
 		}
 	}
 
-	return nil
+	err := <-h.completed
+	if err != nil {
+		return errResponse, err
+	}
+
+	return Response{Code: 0}, nil
 }
 
 // Resize nothing
 func (h *EchoHandler) Resize(tty *Resize) error {
 	return nil
-}
-
-// Wait until copy of io streams finished
-func (h *EchoHandler) Wait() (Response, error) {
-	if h.errors.Wait != nil {
-		return Response{Code: 1}, h.errors.Wait
-	}
-
-	select {
-	case err := <-h.completed:
-		if err != nil {
-			return Response{Code: 1}, err
-		}
-	}
-
-	return Response{Code: 1}, nil
 }
 
 // Close nothing

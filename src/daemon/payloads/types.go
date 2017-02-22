@@ -9,5 +9,5 @@ type Payload struct {
 
 // Parser generic interface
 type Parser interface {
-	Parse(string) (*Payload, error)
+	Parse(string) (Payload, error)
 }

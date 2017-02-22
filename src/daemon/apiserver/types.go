@@ -1,7 +1,9 @@
-package tasks
+package apiserver
 
 import (
+	"context"
 	"daemon/payloads"
+	"daemon/utils"
 	"net"
 	"time"
 )
@@ -23,11 +25,6 @@ const (
 	TaskStatusUnknown = "unknown"
 )
 
-// Provider is an interface for task loaders
-type Provider interface {
-	LoadTasks() ([]Task, error)
-}
-
 // Task keeps exported task fields and instances
 type Task struct {
 	ID          string
@@ -35,16 +32,36 @@ type Task struct {
 	CPU         float32
 	Mem         uint
 	Constraints map[string]string
-	Instances   []Instance
+	Instances   []TaskInstance
 	UpdatedAt   time.Time
+	Digest      string
 }
 
-// Instance keeps exported instance fields
-type Instance struct {
+// TaskInstance keeps exported instance fields
+type TaskInstance struct {
 	ID        string
 	Addr      net.IP
 	State     string
 	Healthy   bool
 	Payload   payloads.Payload
 	UpdatedAt time.Time
+	Digest    string
+}
+
+// Result contains tasks and digest
+type Result struct {
+	Tasks     []Task
+	Digest    string
+	CreatedAt time.Time
+}
+
+// Provider is an interface for task loaders
+type Provider interface {
+	GetTasks(ctx context.Context) (Result, error)
+}
+
+// RunnableProvider is an interface for aggregator
+type RunnableProvider interface {
+	Provider
+	utils.Runnable
 }

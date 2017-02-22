@@ -1,45 +1,54 @@
 package sshd
 
 import (
-	"daemon/handlers"
+	"context"
+	"daemon/payloads"
+	"daemon/sshd/handlers"
 	"daemon/utils"
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 	"io"
-	"time"
+	"sync"
 )
 
-// CreateSessionOptions keeps parameters for constructor
-type CreateSessionOptions struct {
+// SessionOptions keeps parameters for constructor
+type SessionOptions struct {
 	Conn        *ssh.ServerConn
 	NewChannels <-chan ssh.NewChannel
 	Requests    <-chan *ssh.Request
 	HandlerFunc handlers.HandlerFunc
+	Payload     payloads.Payload
 }
 
 // Session uses for handing ssh client requests
 type Session struct {
+	sync.Mutex
 	conn        *ssh.ServerConn
 	newChannels <-chan ssh.NewChannel
 	requests    <-chan *ssh.Request
 	handlerFunc handlers.HandlerFunc
 	handlerTty  *handlers.Tty
 	handler     handlers.Handler
-	handled     bool
-	exited      bool
-	closed      bool
 	log         *logrus.Entry
+	payload     payloads.Payload
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 // NewSession creates a new consumer for incoming ssh connection
-func NewSession(options *CreateSessionOptions) *Session {
+func NewSession(ctx context.Context, options *SessionOptions) *Session {
+	ctx, cancel := context.WithCancel(ctx)
+
 	session := &Session{
 		conn:        options.Conn,
 		newChannels: options.NewChannels,
 		requests:    options.Requests,
 		handlerFunc: options.HandlerFunc,
-		log:         utils.NewLogEntry("sshd.session"),
+		payload:     options.Payload,
+		log:         utils.NewLogEntry("ssh.session"),
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 	return session
 }
@@ -77,21 +86,19 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 	}
 
 	go func() {
-		defer s.closeChannel(channel)
 
 		for {
 			select {
-
-			case <-time.After(10 * time.Second):
-				if !s.handled {
-					s.log.Warn("Could not handle request within 10 second")
-					goto END_LOOP
-				}
+			case <-s.ctx.Done():
+				s.log.Debug("Context done")
+				s.closeChannel(channel)
+				return
 
 			case req := <-requests:
+
 				if req == nil {
-					s.log.Debug("No more requests")
-					goto END_LOOP
+					s.log.Debug("Client closed connection")
+					return
 				}
 
 				switch req.Type {
@@ -110,19 +117,17 @@ func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {
 				}
 			}
 		}
-
-	END_LOOP:
 	}()
 }
 
 func (s *Session) handleResizeReq(req *ssh.Request) {
-	if s.handlerTty == nil {
+	if !s.isTTY() {
 		s.log.Warn("'window-change' request called before 'tty-req' request")
 		reqReply(req, false, s.log)
 		return
 	}
 
-	if s.handler == nil {
+	if !s.isHandled() {
 		s.log.Warn("'window-changed' request called without 'exec' request")
 		reqReply(req, false, s.log)
 		return
@@ -145,18 +150,18 @@ func (s *Session) handleResizeReq(req *ssh.Request) {
 }
 
 func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
-	if s.handled {
+	if s.isHandled() {
 		s.log.Warn("'exec' request called multiple times")
 		reqReply(req, false, s.log)
 		return
 	}
-	s.handled = true
 
 	handleRequest := &handlers.Request{
-		Tty:    s.handlerTty,
-		Stdin:  channel.(io.Reader),
-		Stdout: channel.(io.Writer),
-		Stderr: channel.Stderr(),
+		Tty:     s.handlerTty,
+		Stdin:   channel.(io.Reader),
+		Stdout:  channel.(io.Writer),
+		Stderr:  channel.Stderr(),
+		Payload: s.payload,
 	}
 
 	if req.Type == "exec" {
@@ -169,36 +174,31 @@ func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
 		handleRequest.Exec = string(execReq)
 	}
 
-	sessionHandler, err := s.handlerFunc(s.conn.User())
+	sessionHandler, err := s.handlerFunc()
 	if err != nil {
-		s.log.Errorf("Could not create handlers (%s)", err)
+		s.log.Errorf("Could not create a new handler (%s)", err)
 		reqReply(req, false, s.log)
 		return
 	}
 
-	if err := sessionHandler.Handle(handleRequest); err != nil {
-		s.log.Errorf("Could not handle request (%s)", err)
-		reqReply(req, false, s.log)
-		return
-	}
-
-	s.handler = sessionHandler
-	reqReply(req, true, s.log)
-
-	s.log.Debugf("Request successfully handled")
+	s.setHandler(sessionHandler)
 
 	go func() {
-		resp, err := sessionHandler.Wait()
+		resp, err := sessionHandler.Handle(s.ctx, handleRequest)
 		if err != nil {
-			s.log.Errorf("Could not wait handler (%s)", err)
+			s.log.Errorf("Could not handle request (%s)", err)
 		}
-		s.exitChannel(channel, uint32(resp.Code))
+		s.sendExitReply(channel, uint32(resp.Code))
+		s.cancel()
 	}()
 
+	reqReply(req, true, s.log)
+
+	s.log.Debugf("Request handled")
 }
 
 func (s *Session) handleTtyReq(req *ssh.Request) {
-	if s.handlerTty != nil {
+	if s.isTTY() {
 		s.log.Warnf("'tty-req' request called multiple times")
 		return
 	}
@@ -210,34 +210,20 @@ func (s *Session) handleTtyReq(req *ssh.Request) {
 		return
 	}
 
-	s.handlerTty = tty
+	s.setTTY(tty)
 	reqReply(req, true, s.log)
 }
 
-func (s *Session) exitChannel(channel ssh.Channel, code uint32) {
-	if s.exited {
-		s.log.Warnf("Channel exit called multiple times")
-		return
-	}
-	s.exited = true
-
+func (s *Session) sendExitReply(channel ssh.Channel, code uint32) {
 	if _, err := channel.SendRequest("exit-status", false, buildExitStatus(code)); err != nil {
 		s.log.Warnf("Could not send 'exit-status' request (%s)", err)
-		return
+	} else {
+		s.log.Debugf("Sent request 'exit-status' (%d)", code)
 	}
-
-	s.log.Debugf("Successfuly send request 'exit-status' (%d)", code)
-	s.closeChannel(channel)
 }
 
 func (s *Session) closeChannel(channel ssh.Channel) {
-	if s.closed {
-		s.log.Warnf("Channel close called multiple times")
-		return
-	}
-	s.closed = true
-
-	if s.handler != nil {
+	if s.isHandled() {
 		if err := s.handler.Close(); err != nil {
 			s.log.Errorf("Could not close handlers (%s)", err)
 		}
@@ -250,6 +236,30 @@ func (s *Session) closeChannel(channel ssh.Channel) {
 			s.log.Debugf("Could not close channel (%s)", err)
 		}
 	} else {
-		s.log.Infof("Channel successfuly closed")
+		s.log.Debug("Channel closed")
 	}
+}
+
+func (s *Session) isHandled() bool {
+	s.Lock()
+	defer s.Unlock()
+	return s.handler != nil
+}
+
+func (s *Session) setHandler(handler handlers.Handler) {
+	s.Lock()
+	defer s.Unlock()
+	s.handler = handler
+}
+
+func (s *Session) isTTY() bool {
+	s.Lock()
+	defer s.Unlock()
+	return s.handlerTty != nil
+}
+
+func (s *Session) setTTY(tty *handlers.Tty) {
+	s.Lock()
+	defer s.Unlock()
+	s.handlerTty = tty
 }

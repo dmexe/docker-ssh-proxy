@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"daemon/payloads"
 	"daemon/utils"
 	"errors"
@@ -19,32 +20,40 @@ type DockerHandler struct {
 	cli       *docker.Client
 	container *docker.Container
 	session   *docker.Exec
-	closer    docker.CloseWaiter
-	payload   *payloads.Payload
-	closed    bool
 	log       *logrus.Entry
+	cancel    context.CancelFunc
 }
 
-// NewDockerClient is an alias for docker.NewClientFromEnv
-func NewDockerClient() (*docker.Client, error) {
+// DockerHandlerOptions keeps options for a new handler instance
+type DockerHandlerOptions struct {
+	Client *docker.Client
+}
+
+// NewDockerClientFromEnv is an alias for docker.NewClientFromEnv()
+func NewDockerClientFromEnv() (*docker.Client, error) {
 	return docker.NewClientFromEnv()
 }
 
 // NewDockerHandler creates handler for docker requests
-func NewDockerHandler(client *docker.Client, payload *payloads.Payload) (*DockerHandler, error) {
-	handler := &DockerHandler{
-		cli:     client,
-		payload: payload,
-		log:     utils.NewLogEntry("handler.docker"),
+func NewDockerHandler(opts DockerHandlerOptions) (*DockerHandler, error) {
+
+	if opts.Client == nil {
+		return nil, errors.New("Client cannot be nil")
 	}
+
+	handler := &DockerHandler{
+		cli: opts.Client,
+		log: utils.NewLogEntry("handler.docker"),
+	}
+
 	return handler, nil
 }
 
 // Handle given request, looking for container and start docker exec
-func (h *DockerHandler) Handle(req *Request) error {
+func (h *DockerHandler) Handle(ctx context.Context, req *Request) (Response, error) {
 	containers, err := h.cli.ListContainers(docker.ListContainersOptions{})
 	if err != nil {
-		return err
+		return errResponse, err
 	}
 
 	var matched *docker.Container
@@ -52,24 +61,27 @@ func (h *DockerHandler) Handle(req *Request) error {
 	for _, container := range containers {
 		inspect, err := h.cli.InspectContainer(container.ID)
 		if err != nil {
-			return err
+			return errResponse, err
 		}
 
-		if h.isMatched(inspect) {
+		if h.isMatched(inspect, req.Payload) {
 			matched = inspect
 			break
 		}
 	}
 
 	if matched == nil {
-		return fmt.Errorf("Could not found container for %v", h.payload)
+		return errResponse, fmt.Errorf("Could not found container for %v", req.Payload)
 	}
 
-	return h.startSession(matched, req)
+	return h.startSession(ctx, matched, req)
 }
 
-func (h *DockerHandler) startSession(container *docker.Container, req *Request) error {
+func (h *DockerHandler) startSession(ctx context.Context, container *docker.Container, req *Request) (Response, error) {
 
+	ctx, cancel := context.WithCancel(ctx)
+
+	h.cancel = cancel
 	h.container = container
 
 	createExecOptions := docker.CreateExecOptions{
@@ -79,6 +91,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 		Tty:          false,
 		Cmd:          []string{"/bin/sh"},
 		Container:    container.ID,
+		Context:      ctx,
 	}
 
 	if req.Tty != nil {
@@ -97,21 +110,22 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 
 		args, err := shlex.Split(req.Exec)
 		if err != nil {
-			return err
+			return errResponse, err
 		}
 
 		cmdline = append(cmdline, args...)
-		h.log.Debugf("Container session with cmdline %v", cmdline)
 		createExecOptions.Cmd = cmdline
 	}
 
+	h.log.Debugf("Container session with cmdline (%s)", strings.Join(createExecOptions.Cmd, " "))
+
 	session, err := h.cli.CreateExec(createExecOptions)
 	if err != nil {
-		return err
+		return errResponse, err
 	}
 	h.session = session
 
-	h.log.Debugf("Container session successfuly created %s", session.ID[:10])
+	h.log.Debugf("Container session created (%s)", container.ID[:10])
 
 	success := make(chan struct{})
 
@@ -123,6 +137,7 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 		Tty:          false,
 		RawTerminal:  false,
 		Success:      success,
+		Context:      ctx,
 	}
 
 	if req.Tty != nil {
@@ -145,31 +160,32 @@ func (h *DockerHandler) startSession(container *docker.Container, req *Request) 
 
 	closer, err := h.cli.StartExecNonBlocking(session.ID, startExecOptions)
 	if err != nil {
-		return err
+		return errResponse, err
 	}
-	h.closer = closer
 
-	h.log.Infof("Container session successfuly started %s", session.ID[:10])
+	h.log.Infof("Container session started (%s)", container.ID[:10])
 
-	return nil
-}
+	complete := make(chan error)
 
-// Wait until docker exec finished
-func (h *DockerHandler) Wait() (Response, error) {
-	if h.closer != nil {
-		h.log.Debug("Starting wait for container session response")
-		if err := h.closer.Wait(); err != nil {
-			return Response{Code: 1}, fmt.Errorf("Could wait container session (%s)", err)
+	go func() {
+		complete <- closer.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		h.log.Debugf("Context done")
+		if err := closer.Close(); err != nil {
+			return errResponse, fmt.Errorf("Could not close container session=%s (%s)", session.ID[:10], err)
+		}
+	case err := <-complete:
+		if err != nil {
+			return errResponse, fmt.Errorf("Could not wait session=%s (%s)", session.ID[:10], err)
 		}
 	}
 
-	if h.session == nil {
-		return Response{Code: 1}, errors.New("Exec instance is undefined")
-	}
-
-	inspect, err := h.cli.InspectExec(h.session.ID)
+	inspect, err := h.cli.InspectExec(session.ID)
 	if err != nil {
-		return Response{Code: 1}, fmt.Errorf("Could not inspect session=%s (%s)", h.session.ID, err)
+		return errResponse, fmt.Errorf("Could not inspect session=%s (%s)", session.ID[:10], err)
 	}
 
 	h.log.Debugf("Process exited with code %d", inspect.ExitCode)
@@ -177,23 +193,23 @@ func (h *DockerHandler) Wait() (Response, error) {
 	return Response{Code: inspect.ExitCode}, nil
 }
 
-func (h *DockerHandler) isMatched(container *docker.Container) bool {
-	if len(h.payload.ContainerID) > 8 && strings.HasPrefix(container.ID, h.payload.ContainerID) {
-		h.log.Debugf("Match container by id=%s", container.ID)
+func (h *DockerHandler) isMatched(container *docker.Container, payload payloads.Payload) bool {
+	if len(payload.ContainerID) > 8 && strings.HasPrefix(container.ID, payload.ContainerID) {
+		h.log.Debugf("Container found (id=%s)", container.ID[:10])
 		return true
 	}
 
-	if h.payload.ContainerEnv != "" {
+	if payload.ContainerEnv != "" {
 		for _, env := range container.Config.Env {
-			if env == h.payload.ContainerEnv {
-				h.log.Debugf("Match container by env %s id=%s", env, container.ID)
+			if env == payload.ContainerEnv {
+				h.log.Debugf("Countainer found (id=%s env=%s)", container.ID[:10], env)
 				return true
 			}
 		}
 	}
 
-	if h.payload.ContainerLabel != "" {
-		fields := strings.FieldsFunc(h.payload.ContainerLabel, func(r rune) bool {
+	if payload.ContainerLabel != "" {
+		fields := strings.FieldsFunc(payload.ContainerLabel, func(r rune) bool {
 			return r == '='
 		})
 
@@ -203,7 +219,7 @@ func (h *DockerHandler) isMatched(container *docker.Container) bool {
 
 			for name, value := range container.Config.Labels {
 				if name == fieldName && value == fieldValue {
-					h.log.Debugf("Match container by label %s=%s id=%s", name, value, container.ID)
+					h.log.Debugf("Container found (id=%s %s=%s)", container.ID[:10], name, value)
 					return true
 				}
 			}
@@ -220,25 +236,15 @@ func (h *DockerHandler) Resize(req *Resize) error {
 		if err != nil {
 			return fmt.Errorf("Could not resize tty (%s)", err)
 		}
-		h.log.Debugf("Tty successfuly resized to %v", *req)
+		h.log.Debugf("Tty resized to %dx%d", req.Width, req.Height)
 	}
 	return nil
 }
 
-// Close docker exec session
+// Close current session in container
 func (h *DockerHandler) Close() error {
-	if h.closed {
-		h.log.Warnf("Close session called multiple times")
-		return nil
-	}
-	h.closed = true
-
-	if h.session != nil && h.closer != nil {
-		err := h.closer.Close()
-		if err != nil {
-			return fmt.Errorf("Could not close container session (%s)", err)
-		}
-		h.log.Info("Container session successfuly closed")
+	if h.cancel != nil {
+		h.cancel()
 	}
 	return nil
 }

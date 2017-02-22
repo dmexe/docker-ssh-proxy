@@ -1,8 +1,9 @@
 package marathon
 
 import (
+	"context"
+	"daemon/apiserver"
 	"daemon/payloads"
-	"daemon/tasks"
 	"daemon/utils"
 	"encoding/json"
 	"fmt"
@@ -16,20 +17,20 @@ import (
 
 // From https://github.com/apache/mesos/blob/master/include/mesos/mesos.proto#L1674
 var mesosStatuses = map[string]string{
-	"TASK_STAGING":          tasks.TaskStatusPending,
-	"TASK_STARTING":         tasks.TaskStatusPending,
-	"TASK_RUNNING":          tasks.TaskStatusRunning,
-	"TASK_KILLING":          tasks.TaskStatusRunning,
-	"TASK_STATUS_FINISHED":  tasks.TaskStatusFinished,
-	"TASK_STATUS_FAILED":    tasks.TaskStatusFailed,
-	"TASK_KILLED":           tasks.TaskStatusFailed,
-	"TASK_ERROR":            tasks.TaskStatusFailed,
-	"TASK_LOST":             tasks.TaskStatusFailed,
-	"TASK_DROPPED":          tasks.TaskStatusFailed,
-	"TASK_UNREACHABLE":      tasks.TaskStatusFailed,
-	"TASK_GONE":             tasks.TaskStatusUnknown,
-	"TASK_GONE_BY_OPERATOR": tasks.TaskStatusUnknown,
-	"TASK_STATUS_UNKNOWN":   tasks.TaskStatusUnknown,
+	"TASK_STAGING":          apiserver.TaskStatusPending,
+	"TASK_STARTING":         apiserver.TaskStatusPending,
+	"TASK_RUNNING":          apiserver.TaskStatusRunning,
+	"TASK_KILLING":          apiserver.TaskStatusRunning,
+	"TASK_STATUS_FINISHED":  apiserver.TaskStatusFinished,
+	"TASK_STATUS_FAILED":    apiserver.TaskStatusFailed,
+	"TASK_KILLED":           apiserver.TaskStatusFailed,
+	"TASK_ERROR":            apiserver.TaskStatusFailed,
+	"TASK_LOST":             apiserver.TaskStatusFailed,
+	"TASK_DROPPED":          apiserver.TaskStatusFailed,
+	"TASK_UNREACHABLE":      apiserver.TaskStatusFailed,
+	"TASK_GONE":             apiserver.TaskStatusUnknown,
+	"TASK_GONE_BY_OPERATOR": apiserver.TaskStatusUnknown,
+	"TASK_STATUS_UNKNOWN":   apiserver.TaskStatusUnknown,
 }
 
 // Provider loads tasks from marathon
@@ -51,9 +52,11 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 		return nil, fmt.Errorf("Could not parse endpoint url '%s' (%s)", options.Endpoint, err)
 	}
 
+	endpointURL.Path = strings.TrimSuffix(endpointURL.Path, "/")
+
 	m := &Provider{
 		url: *endpointURL,
-		log: utils.NewLogEntry("provider.marathon"),
+		log: utils.NewLogEntry("api.marathon").WithField("url", endpointURL.String()),
 		cli: &http.Client{
 			Timeout: time.Duration(5 * time.Second),
 		},
@@ -61,42 +64,59 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 	return m, nil
 }
 
-// LoadTasks from marathon
-func (p *Provider) LoadTasks() ([]tasks.Task, error) {
-	endpoint := fmt.Sprintf("%s/v2/apps?embed=apps.tasks", p.url.String())
+// GetTasks from marathon
+func (p *Provider) GetTasks(ctx context.Context) (apiserver.Result, error) {
+	endpoint := fmt.Sprintf("%s/apps?embed=apps.tasks", p.url.String())
 	respApps := appsResponse{}
+	emptyResult := apiserver.Result{}
 
-	response, err := p.cli.Get(endpoint)
+	request, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Could not load marathon apps (%s)", err)
+		return emptyResult, fmt.Errorf("Could not build request (%s)", err)
+	}
+
+	response, err := p.cli.Do(request.WithContext(ctx))
+	if err != nil {
+		return emptyResult, fmt.Errorf("Could not load marathon apps (%s)", err)
 	}
 
 	if err := p.parseJSON(response, &respApps); err != nil {
-		return nil, fmt.Errorf("Could not parse json response (%s)", err)
+		return emptyResult, fmt.Errorf("Could not parse json response (%s)", err)
 	}
 
 	return p.buildTasks(respApps)
 }
 
-func (p *Provider) buildTasks(respApps appsResponse) ([]tasks.Task, error) {
-	result := make([]tasks.Task, 0)
+func (p *Provider) buildTasks(respApps appsResponse) (apiserver.Result, error) {
+	result := make([]apiserver.Task, 0)
+	sums := make([]string, 0)
 
 	for _, respApp := range respApps.Apps {
-		instances := make([]tasks.Instance, 0)
+		instances := make([]apiserver.TaskInstance, 0)
+		instancesSum := make([]string, 0)
+		tasksSum := make([]string, 0)
 
 		for _, respTask := range respApp.Tasks {
-			instance := tasks.Instance{}
+			instance := apiserver.TaskInstance{}
 			instance.ID = respTask.ID
 			instance.Addr = respTask.Host
 			instance.Healthy = p.isTaskHealthy(respTask)
 			instance.State = p.buildTaskStatus(respTask)
 			instance.UpdatedAt = respTask.StartedAt
 			instance.Payload = p.buildPayload(respTask)
+
+			instance.Digest = utils.StringDigest(
+				instance.ID,
+				respTask.StagedAt.String(),
+				respTask.StartedAt.String(),
+			)
+
 			instances = append(instances, instance)
+			instancesSum = append(instancesSum, instance.Digest)
 		}
 
 		if len(instances) > 0 {
-			task := tasks.Task{}
+			task := apiserver.Task{}
 			task.ID = respApp.ID
 			task.Image = respApp.Container.Docker.Image
 			task.CPU = respApp.CPU
@@ -104,12 +124,25 @@ func (p *Provider) buildTasks(respApps appsResponse) ([]tasks.Task, error) {
 			task.Constraints = p.buildConstraints(respApp)
 			task.UpdatedAt = respApp.VersionInfo.LastConfigChangeAt
 			task.Instances = instances
+
+			task.Digest = utils.StringDigest(
+				task.ID,
+				respApp.VersionInfo.LastConfigChangeAt.String(),
+				respApp.VersionInfo.LastScalingAt.String(),
+				utils.StringDigest(tasksSum...),
+			)
+
 			result = append(result, task)
+			sums = append(sums, task.Digest)
 		}
 	}
 
-	return result, nil
+	return apiserver.Result{
+		Tasks:  result,
+		Digest: utils.StringDigest(sums...),
+	}, nil
 }
+
 func (p *Provider) buildPayload(respTask taskResponse) payloads.Payload {
 	return payloads.Payload{
 		ContainerEnv: fmt.Sprintf("MESOS_TASK_ID=%s", respTask.ID),
@@ -119,7 +152,7 @@ func (p *Provider) buildPayload(respTask taskResponse) payloads.Payload {
 func (p *Provider) buildTaskStatus(respTask taskResponse) string {
 	status := mesosStatuses[respTask.State]
 	if status == "" {
-		return tasks.TaskStatusUnknown
+		return apiserver.TaskStatusUnknown
 	}
 	return status
 }
@@ -153,7 +186,7 @@ func (p *Provider) isTaskHealthy(respTask taskResponse) bool {
 
 func (p *Provider) parseJSON(response *http.Response, obj interface{}) error {
 	if response.StatusCode != 200 {
-		return fmt.Errorf("Unexpected response code, expected=200, actual=%d", response.StatusCode)
+		return fmt.Errorf("Unexpected response code, expected=200, actual=%d (%s)", response.StatusCode, response.Request.URL)
 	}
 
 	body, err := ioutil.ReadAll(response.Body)

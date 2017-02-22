@@ -1,8 +1,9 @@
 package marathon
 
 import (
+	"context"
+	"daemon/apiserver"
 	"daemon/payloads"
-	"daemon/tasks"
 	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"
@@ -15,17 +16,17 @@ import (
 	"testing"
 )
 
-func Test_Provider(t *testing.T) {
+func Test_Marathon(t *testing.T) {
 
 	t.Run("should load application from marathon", func(t *testing.T) {
 		server := newTestMarathonServer(t, "apps.running.json")
 		provider := newTestProvider(t, server.URL)
 
-		providerTasks, err := provider.LoadTasks()
+		result, err := provider.GetTasks(context.Background())
 		require.NoError(t, err)
-		require.Len(t, providerTasks, 1)
+		require.Len(t, result.Tasks, 1)
 
-		task := providerTasks[0]
+		task := result.Tasks[0]
 		require.Equal(t, "/app/demo", task.ID)
 		require.Equal(t, "alpine", task.Image)
 		require.Equal(t, float32(0.1), task.CPU)
@@ -39,7 +40,7 @@ func Test_Provider(t *testing.T) {
 		require.Equal(t, "10.1.1.244", inst.Addr.String())
 		require.Equal(t, "2017-02-15 15:41:06.503 +0000 UTC", inst.UpdatedAt.String())
 		require.Equal(t, true, inst.Healthy)
-		require.Equal(t, tasks.TaskStatusRunning, inst.State)
+		require.Equal(t, apiserver.TaskStatusRunning, inst.State)
 		require.Equal(t, payloads.Payload{ContainerEnv: "MESOS_TASK_ID=app_demo.27b10ccc-f395-11e6-9a83-424dbc3181a1"}, inst.Payload)
 	})
 }
@@ -69,7 +70,7 @@ func newTestMarathonServer(t *testing.T, fixtureName string) *httptest.Server {
 	}
 
 	mx := http.NewServeMux()
-	mx.Handle("/v2/apps", handler)
+	mx.Handle("/apps", handler)
 
 	return httptest.NewServer(mx)
 }

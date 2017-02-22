@@ -2,7 +2,7 @@ package sshd
 
 import (
 	"bytes"
-	"daemon/handlers"
+	"daemon/sshd/handlers"
 	"encoding/binary"
 	"fmt"
 	"github.com/Sirupsen/logrus"
