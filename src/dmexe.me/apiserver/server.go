@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
-	"net"
 	"net/http"
+	"github.com/gorilla/handlers"
+	"net"
 	"sync"
 )
 
@@ -85,14 +86,14 @@ func (s *Server) Run(wg *sync.WaitGroup) error {
 	apiRouter.Methods("GET").Path("/tasks").HandlerFunc(s.getTasksHandler)
 
 	rootRouter.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
-		if t, err := route.GetPathTemplate(); err != nil {
+		if t, err := route.GetPathTemplate(); err == nil {
 			s.log.Debugf("Route %s", t)
 		}
 		return nil
 	})
 
 	server := &http.Server{
-		Handler: rootRouter,
+		Handler: handlers.CORS()(rootRouter),
 	}
 
 	listener, err := net.Listen("tcp", s.listenAddress)

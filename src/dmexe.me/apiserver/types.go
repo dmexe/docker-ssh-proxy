@@ -27,32 +27,32 @@ const (
 
 // Task keeps exported task fields and instances
 type Task struct {
-	ID          string
-	Image       string
-	CPU         float32
-	Mem         uint
-	Constraints map[string]string
-	Instances   []TaskInstance
-	UpdatedAt   time.Time
-	Digest      string
+	ID          string `json:"id"`
+	Image       string `json:"image"`
+	CPU         float32 `json:"cpu"`
+	Mem         uint `json:"mem"`
+	Constraints map[string]string `json:"constraints"`
+	Instances   []TaskInstance `json:"instances"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Digest      string `json:"digest"`
 }
 
 // TaskInstance keeps exported instance fields
 type TaskInstance struct {
-	ID        string
-	Addr      net.IP
-	State     string
-	Healthy   bool
-	Payload   payloads.Payload
-	UpdatedAt time.Time
-	Digest    string
+	ID        string `json:"id"`
+	Addr      net.IP `json:"addr"`
+	State     string `json:"state"`
+	Healthy   bool `json:"healthy"`
+	Payload   payloads.Payload `json:"payload"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Digest    string `json:"digest"`
 }
 
 // Result contains tasks and digest
 type Result struct {
-	Tasks     []Task
-	Digest    string
-	CreatedAt time.Time
+	Tasks     []Task `json:"tasks"`
+	Digest    string `json:"digest"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Provider is an interface for task loaders

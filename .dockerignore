@@ -1,6 +1,8 @@
 pkg/
 src/dmexe.me/vendor
 !src/dmexe.me/vendor/vendor.json
+src/dmexe.me/ui/node_modules
+src/dmexe.me/ui/dist
 src/github.com
 bin/govendor
 bin/daemon*

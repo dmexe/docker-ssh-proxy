@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-// JwtParser is a parser implementation for JWT tokens
+// JwtParser is a parser implementation for JWT tokens,
 // known token keys
 // * cid - container id identifier
 // * env - container environment variable (eg. FOO=bar)
@@ -28,7 +28,7 @@ func NewJwtParser(secret string) (*JwtParser, error) {
 	return config, nil
 }
 
-// NewJwtParserFromEnv construct a new parser instance using jwtSecret
+// NewJwtParserFromEnv construct a new parser instance using JWT_SECRET
 // environment variable
 func NewJwtParserFromEnv() (*JwtParser, error) {
 	secret := os.Getenv("JWT_SECRET")
@@ -39,7 +39,7 @@ func NewJwtParserFromEnv() (*JwtParser, error) {
 	return NewJwtParser(secret)
 }
 
-// Parse given string to payload
+// Parse construct a payload from given string
 func (p *JwtParser) Parse(token string) (Payload, error) {
 	payload := Payload{}
 

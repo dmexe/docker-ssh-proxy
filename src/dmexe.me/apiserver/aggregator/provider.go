@@ -112,7 +112,7 @@ func (p *Provider) load() error {
 		p.setResult(newResult)
 		p.log.Debugf("Load %d tasks", len(collected))
 	} else {
-		p.log.Debugf("Nothing changed", len(collected))
+		p.log.Debug("Nothing changed")
 	}
 
 	return nil
