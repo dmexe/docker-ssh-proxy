@@ -1,7 +1,8 @@
 package utils
 
+import "sync"
+
 // Runnable is simple interface for services
 type Runnable interface {
-	Run() error
-	Wait() error
+	Run(wg *sync.WaitGroup) error
 }

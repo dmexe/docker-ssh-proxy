@@ -22,7 +22,7 @@ func Test_Provider(t *testing.T) {
 		server := newTestMarathonServer(t, "apps.running.json")
 		provider := newTestProvider(t, server.URL)
 
-		providerTasks, err := provider.LoadTasks(context.Background())
+		providerTasks, err := provider.GetTasks(context.Background())
 		require.NoError(t, err)
 		require.Len(t, providerTasks, 1)
 

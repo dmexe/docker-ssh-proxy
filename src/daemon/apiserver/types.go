@@ -5,6 +5,7 @@ import (
 	"daemon/payloads"
 	"net"
 	"time"
+	"daemon/utils"
 )
 
 const (
@@ -26,7 +27,12 @@ const (
 
 // Provider is an interface for task loaders
 type Provider interface {
-	LoadTasks(ctx context.Context) ([]Task, error)
+	GetTasks(ctx context.Context) ([]Task, error)
+}
+
+type RunnableProvider interface {
+	Provider
+	utils.Runnable
 }
 
 // Task keeps exported task fields and instances

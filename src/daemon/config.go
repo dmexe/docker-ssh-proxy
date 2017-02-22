@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"daemon/apiserver"
+	"daemon/apiserver/aggregator"
 	"daemon/apiserver/marathon"
 	"daemon/payloads"
 	"daemon/sshd"
@@ -16,6 +16,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"daemon/apiserver"
 )
 
 type apiMarathonConfig struct {
@@ -39,7 +40,7 @@ func (m *apiMarathonConfig) Set(value string) error {
 }
 
 type debugConfig struct {
-	token string
+	token   string
 	enabled bool
 }
 
@@ -130,7 +131,7 @@ func (cfg *appConfig) getPayloadParser() payloads.Parser {
 	if cfg.debug.token != "" {
 		cfg.log.Warnf("Force payload to ContainerID=%s", cfg.debug.token)
 		return &payloads.EchoParser{
-			Payload: payloads.Payload{ ContainerID: cfg.debug.token },
+			Payload: payloads.Payload{ContainerID: cfg.debug.token},
 		}
 	}
 
@@ -183,7 +184,7 @@ func (cfg *appConfig) getShellServer(privateKey []byte, handlerFunc handlers.Han
 	return server
 }
 
-func (cfg *appConfig) getTasksManagerProviders() []apiserver.Provider {
+func (cfg *appConfig) getApiProvider() apiserver.RunnableProvider {
 	providers := make([]apiserver.Provider, 0)
 
 	for _, url := range cfg.api.marathon.urls {
@@ -197,16 +198,12 @@ func (cfg *appConfig) getTasksManagerProviders() []apiserver.Provider {
 		providers = append(providers, provider)
 	}
 
-	return providers
-}
-
-func (cfg *appConfig) getTasksManager() *apiserver.TasksManager {
-	managerOptions := apiserver.TasksManagerOptions{
-		Providers: cfg.getTasksManagerProviders(),
+	aggregatorOptions := aggregator.ProviderOptions{
+		Providers: providers,
 		Interval:  cfg.api.manager.interval,
 	}
 
-	manager, err := apiserver.NewManager(cfg.ctx, managerOptions)
+	manager, err := aggregator.NewProvider(cfg.ctx, aggregatorOptions)
 	if err != nil {
 		log.Fatal(err)
 	}

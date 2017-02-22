@@ -33,7 +33,7 @@ type Server struct {
 	ctx           context.Context
 }
 
-// NewServer creates a new sshd server instance using given options and session handlers constructor
+// NewServer creates a new sshd server instance using given options
 func NewServer(ctx context.Context, opts ServerOptions) (*Server, error) {
 	config := &ssh.ServerConfig{
 		NoClientAuth: true,

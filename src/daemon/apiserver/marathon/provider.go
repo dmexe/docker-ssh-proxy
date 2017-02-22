@@ -65,7 +65,7 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 }
 
 // LoadTasks from marathon
-func (p *Provider) LoadTasks(ctx context.Context) ([]apiserver.Task, error) {
+func (p *Provider) GetTasks(ctx context.Context) ([]apiserver.Task, error) {
 	endpoint := fmt.Sprintf("%s/apps?embed=apps.tasks", p.url.String())
 	respApps := appsResponse{}
 

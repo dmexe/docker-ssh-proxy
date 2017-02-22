@@ -19,7 +19,7 @@ check.lint:
 
 check: check.fmt check.vet check.lint
 
-test: check
+test: #check
 	$(GO) test -cover -race -timeout 1m -v $(PACKAGES)
 	@echo "OK"
 
