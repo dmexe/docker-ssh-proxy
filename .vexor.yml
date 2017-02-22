@@ -1,11 +1,8 @@
-language: "go"
-go: "1.7"
+language: "generic"
 
 before_install:
 - sudo chown $(id -u) /var/run/docker.sock
 - docker info
 - docker pull alpine
-- go env
 
-install: make deps
-script: make test
+script: bin/docker-build

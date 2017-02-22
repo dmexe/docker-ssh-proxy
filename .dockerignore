@@ -1,0 +1,9 @@
+pkg/
+src/dmexe.me/vendor
+!src/dmexe.me/vendor/vendor.json
+src/github.com
+bin/govendor
+bin/daemon*
+bin/id_rsa*
+.cache/
+.idea/
