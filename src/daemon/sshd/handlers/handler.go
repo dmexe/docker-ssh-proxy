@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	unhandledErrResponse = Response{Code: 255}
+	errResponse = Response{Code: 255}
 )
 
 // Resize request

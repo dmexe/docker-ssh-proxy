@@ -38,6 +38,11 @@ func (m *apiMarathonConfig) Set(value string) error {
 	return nil
 }
 
+type debugConfig struct {
+	token string
+	enabled bool
+}
+
 type shellConfig struct {
 	host    string
 	port    uint
@@ -60,7 +65,7 @@ type apiConfig struct {
 type appConfig struct {
 	shell shellConfig
 	api   apiConfig
-	debug bool
+	debug debugConfig
 	log   *logrus.Entry
 	ctx   context.Context
 }
@@ -80,7 +85,7 @@ func newAppConfig(ctx context.Context) appConfig {
 				interval: time.Duration(time.Minute),
 			},
 		},
-		debug: false,
+		debug: debugConfig{},
 		log:   utils.NewLogEntry("config"),
 		ctx:   ctx,
 	}
@@ -100,8 +105,9 @@ func (cfg *appConfig) parseArgs() {
 	flag.DurationVar(&cfg.api.manager.interval, "api.manager.interval", cfg.api.manager.interval, "The pool interval")
 	flag.BoolVar(&cfg.api.enabled, "api", cfg.shell.enabled, "Start the api server")
 
-	// common
-	flag.BoolVar(&cfg.debug, "debug", false, "Enable debug output")
+	// debug config
+	flag.StringVar(&cfg.debug.token, "debug.token", cfg.debug.token, "The debug token")
+	flag.BoolVar(&cfg.debug.enabled, "debug", false, "Enable debug output")
 
 	flag.Parse()
 }
@@ -121,6 +127,13 @@ func (cfg *appConfig) validate() error {
 }
 
 func (cfg *appConfig) getPayloadParser() payloads.Parser {
+	if cfg.debug.token != "" {
+		cfg.log.Warnf("Force payload to ContainerID=%s", cfg.debug.token)
+		return &payloads.EchoParser{
+			Payload: payloads.Payload{ ContainerID: cfg.debug.token },
+		}
+	}
+
 	jwtParser, err := payloads.NewJwtParserFromEnv()
 	if err != nil {
 		log.Fatal(err)

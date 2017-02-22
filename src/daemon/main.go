@@ -23,7 +23,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cfg.debug {
+	if cfg.debug.enabled {
 		log.SetLevel(log.DebugLevel)
 		log.Debug("Debug output enabled")
 	}

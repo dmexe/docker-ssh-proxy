@@ -53,7 +53,7 @@ func NewDockerHandler(opts DockerHandlerOptions) (*DockerHandler, error) {
 func (h *DockerHandler) Handle(ctx context.Context, req *Request) (Response, error) {
 	containers, err := h.cli.ListContainers(docker.ListContainersOptions{})
 	if err != nil {
-		return unhandledErrResponse, err
+		return errResponse, err
 	}
 
 	var matched *docker.Container
@@ -61,7 +61,7 @@ func (h *DockerHandler) Handle(ctx context.Context, req *Request) (Response, err
 	for _, container := range containers {
 		inspect, err := h.cli.InspectContainer(container.ID)
 		if err != nil {
-			return unhandledErrResponse, err
+			return errResponse, err
 		}
 
 		if h.isMatched(inspect, req.Payload) {
@@ -71,7 +71,7 @@ func (h *DockerHandler) Handle(ctx context.Context, req *Request) (Response, err
 	}
 
 	if matched == nil {
-		return unhandledErrResponse, fmt.Errorf("Could not found container for %v", req.Payload)
+		return errResponse, fmt.Errorf("Could not found container for %v", req.Payload)
 	}
 
 	return h.startSession(ctx, matched, req)
@@ -110,21 +110,22 @@ func (h *DockerHandler) startSession(ctx context.Context, container *docker.Cont
 
 		args, err := shlex.Split(req.Exec)
 		if err != nil {
-			return unhandledErrResponse, err
+			return errResponse, err
 		}
 
 		cmdline = append(cmdline, args...)
-		h.log.Debugf("Container session with cmdline %v", cmdline)
 		createExecOptions.Cmd = cmdline
 	}
 
+	h.log.Debugf("Container session with cmdline (%s)", strings.Join(createExecOptions.Cmd, " "))
+
 	session, err := h.cli.CreateExec(createExecOptions)
 	if err != nil {
-		return unhandledErrResponse, err
+		return errResponse, err
 	}
 	h.session = session
 
-	h.log.Debugf("Container session successfuly created %s (exec=%s)", container.ID[:10], session.ID[:10])
+	h.log.Debugf("Container session created (%s)", container.ID[:10])
 
 	success := make(chan struct{})
 
@@ -159,10 +160,10 @@ func (h *DockerHandler) startSession(ctx context.Context, container *docker.Cont
 
 	closer, err := h.cli.StartExecNonBlocking(session.ID, startExecOptions)
 	if err != nil {
-		return unhandledErrResponse, err
+		return errResponse, err
 	}
 
-	h.log.Infof("Container session successfuly started %s (exec=%s)", container.ID[:10], session.ID[:10])
+	h.log.Infof("Container session started (%s)", container.ID[:10])
 
 	complete := make(chan error)
 
@@ -174,17 +175,17 @@ func (h *DockerHandler) startSession(ctx context.Context, container *docker.Cont
 	case <-ctx.Done():
 		h.log.Debugf("Context done")
 		if err := closer.Close(); err != nil {
-			return unhandledErrResponse, fmt.Errorf("Could not close container session=%s (%s)", session.ID, err)
+			return errResponse, fmt.Errorf("Could not close container session=%s (%s)", session.ID[:10], err)
 		}
 	case err := <-complete:
 		if err != nil {
-			return unhandledErrResponse, fmt.Errorf("Could not wait session=%s (%s)", session.ID, err)
+			return errResponse, fmt.Errorf("Could not wait session=%s (%s)", session.ID[:10], err)
 		}
 	}
 
 	inspect, err := h.cli.InspectExec(session.ID)
 	if err != nil {
-		return unhandledErrResponse, fmt.Errorf("Could not inspect session=%s (%s)", session.ID, err)
+		return errResponse, fmt.Errorf("Could not inspect session=%s (%s)", session.ID[:10], err)
 	}
 
 	h.log.Debugf("Process exited with code %d", inspect.ExitCode)
@@ -194,14 +195,14 @@ func (h *DockerHandler) startSession(ctx context.Context, container *docker.Cont
 
 func (h *DockerHandler) isMatched(container *docker.Container, payload payloads.Payload) bool {
 	if len(payload.ContainerID) > 8 && strings.HasPrefix(container.ID, payload.ContainerID) {
-		h.log.Debugf("Container found by id=%s", container.ID)
+		h.log.Debugf("Container found (id=%s)", container.ID[:10])
 		return true
 	}
 
 	if payload.ContainerEnv != "" {
 		for _, env := range container.Config.Env {
 			if env == payload.ContainerEnv {
-				h.log.Debugf("Countainer found by env %s id=%s", env, container.ID)
+				h.log.Debugf("Countainer found (id=%s env=%s)", container.ID[:10], env)
 				return true
 			}
 		}
@@ -218,7 +219,7 @@ func (h *DockerHandler) isMatched(container *docker.Container, payload payloads.
 
 			for name, value := range container.Config.Labels {
 				if name == fieldName && value == fieldValue {
-					h.log.Debugf("Container found by label %s=%s id=%s", name, value, container.ID)
+					h.log.Debugf("Container found (id=%s %s=%s)", container.ID[:10], name, value)
 					return true
 				}
 			}
@@ -235,7 +236,7 @@ func (h *DockerHandler) Resize(req *Resize) error {
 		if err != nil {
 			return fmt.Errorf("Could not resize tty (%s)", err)
 		}
-		h.log.Debugf("Tty successfuly resized to %v", *req)
+		h.log.Debugf("Tty resized to %dx%d", req.Width, req.Height)
 	}
 	return nil
 }

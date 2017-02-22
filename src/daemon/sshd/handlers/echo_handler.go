@@ -33,7 +33,7 @@ func NewEchoHandler(errors EchoHandlerErrors) *EchoHandler {
 // Handle request, just copy stdin to stdout
 func (h *EchoHandler) Handle(_ context.Context, req *Request) (Response, error) {
 	if h.errors.Handle != nil {
-		return unhandledErrResponse, h.errors.Handle
+		return errResponse, h.errors.Handle
 	}
 
 	go func() {
@@ -46,13 +46,13 @@ func (h *EchoHandler) Handle(_ context.Context, req *Request) (Response, error) 
 
 	if req.Exec != "" {
 		if _, err := req.Stdout.Write([]byte(req.Exec)); err != nil {
-			return unhandledErrResponse, err
+			return errResponse, err
 		}
 	}
 
 	err := <-h.completed
 	if err != nil {
-		return unhandledErrResponse, err
+		return errResponse, err
 	}
 
 	return Response{Code: 0}, nil

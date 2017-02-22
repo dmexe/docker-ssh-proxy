@@ -194,7 +194,7 @@ func (s *Session) handleCommandReq(req *ssh.Request, channel ssh.Channel) {
 
 	reqReply(req, true, s.log)
 
-	s.log.Debugf("Request successfully handled")
+	s.log.Debugf("Request handled")
 }
 
 func (s *Session) handleTtyReq(req *ssh.Request) {
@@ -218,7 +218,7 @@ func (s *Session) sendExitReply(channel ssh.Channel, code uint32) {
 	if _, err := channel.SendRequest("exit-status", false, buildExitStatus(code)); err != nil {
 		s.log.Warnf("Could not send 'exit-status' request (%s)", err)
 	} else {
-		s.log.Debugf("Successfuly send request 'exit-status' (%d)", code)
+		s.log.Debugf("Sent request 'exit-status' (%d)", code)
 	}
 }
 
@@ -236,7 +236,7 @@ func (s *Session) closeChannel(channel ssh.Channel) {
 			s.log.Debugf("Could not close channel (%s)", err)
 		}
 	} else {
-		s.log.Debug("Channel successfuly closed")
+		s.log.Debug("Channel closed")
 	}
 }
 
