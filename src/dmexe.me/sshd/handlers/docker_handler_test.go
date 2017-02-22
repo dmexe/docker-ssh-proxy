@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"context"
-	"daemon/payloads"
-	"daemon/utils"
+	"dmexe.me/payloads"
+	"dmexe.me/utils"
 	"fmt"
 	"github.com/fsouza/go-dockerclient"
 	"github.com/stretchr/testify/assert"

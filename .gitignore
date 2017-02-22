@@ -1,5 +1,5 @@
 /pkg/
-/src/daemon/vendor/*/
+/src/dmexe.me/vendor/*/
 /src/github.com
 /bin/govendor
 /bin/daemon*

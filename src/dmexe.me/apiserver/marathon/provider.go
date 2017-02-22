@@ -2,9 +2,9 @@ package marathon
 
 import (
 	"context"
-	"daemon/apiserver"
-	"daemon/payloads"
-	"daemon/utils"
+	"dmexe.me/apiserver"
+	"dmexe.me/payloads"
+	"dmexe.me/utils"
 	"encoding/json"
 	"fmt"
 	log "github.com/Sirupsen/logrus"

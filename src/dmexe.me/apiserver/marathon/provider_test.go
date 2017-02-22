@@ -2,8 +2,8 @@ package marathon
 
 import (
 	"context"
-	"daemon/apiserver"
-	"daemon/payloads"
+	"dmexe.me/apiserver"
+	"dmexe.me/payloads"
 	"github.com/stretchr/testify/require"
 	"io"
 	"io/ioutil"

@@ -2,9 +2,9 @@ package sshd
 
 import (
 	"context"
-	"daemon/payloads"
-	"daemon/sshd/handlers"
-	"daemon/utils"
+	"dmexe.me/payloads"
+	"dmexe.me/sshd/handlers"
+	"dmexe.me/utils"
 	"encoding/binary"
 	"errors"
 	"fmt"

@@ -1,4 +1,4 @@
-MAIN     := daemon
+MAIN     := dmexe.me
 BIN      := $(CURDIR)/bin/daemon
 GOVENDOR := bin/env -c src/$(MAIN) $(CURDIR)/bin/govendor
 ID_RSA   := $(CURDIR)/bin/id_rsa
@@ -19,7 +19,7 @@ check.lint:
 
 check: check.fmt check.vet check.lint
 
-test: #check
+test: check
 	$(GO) test -cover -race -timeout 1m -v $(PACKAGES)
 	@echo "OK"
 
