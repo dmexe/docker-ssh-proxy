@@ -2,23 +2,27 @@ package aggregator
 
 import (
 	"context"
+	"daemon/apiserver"
 	"errors"
 	"github.com/stretchr/testify/require"
 	"sync"
 	"testing"
 	"time"
-	"daemon/apiserver"
 )
 
-func Test_Manager(t *testing.T) {
+func Test_Aggregator(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("should run and get tasks", func(t *testing.T) {
 		var wg sync.WaitGroup
 
-		state := []apiserver.Task{{
-			ID: "id",
-		}}
+		state := apiserver.Result{
+			Tasks: []apiserver.Task{{
+				ID: "id",
+			}},
+			Digest: "digest",
+		}
+
 		provider := &testProvider{
 			state: state,
 		}
@@ -36,11 +40,11 @@ func Test_Manager(t *testing.T) {
 		require.NoError(t, agg.Run(&wg))
 		time.Sleep(120 * time.Millisecond)
 
-		require.Equal(t, uint64(2), agg.getCounter())
+		require.Equal(t, uint64(1), agg.getCounter())
 
-		tasks, err := agg.GetTasks(ctx)
+		result, err := agg.GetTasks(ctx)
 		require.NoError(t, err)
-		require.Len(t, tasks, 1)
+		require.Len(t, result.Tasks, 1)
 
 		cancel()
 		wg.Wait()
@@ -66,9 +70,9 @@ func Test_Manager(t *testing.T) {
 		require.EqualError(t, agg.Run(&wg), "Boom")
 		require.Equal(t, uint64(0), agg.getCounter())
 
-		tasks, err := agg.GetTasks(ctx)
+		result, err := agg.GetTasks(ctx)
 		require.NoError(t, err)
-		require.Empty(t, tasks)
+		require.Empty(t, result.Tasks)
 
 		cancel()
 		wg.Wait()
@@ -77,9 +81,12 @@ func Test_Manager(t *testing.T) {
 	t.Run("should run but fail on background loading", func(t *testing.T) {
 		var wg sync.WaitGroup
 
-		state := []apiserver.Task{{
-			ID: "id",
-		}}
+		state := apiserver.Result{
+			Tasks: []apiserver.Task{{
+				ID: "id",
+			}},
+			Digest: "digest",
+		}
 
 		provider := &testProvider{
 			state: state,
@@ -106,9 +113,9 @@ func Test_Manager(t *testing.T) {
 
 		require.Equal(t, uint64(1), agg.getCounter())
 
-		tasks, err := agg.GetTasks(ctx)
+		result, err := agg.GetTasks(ctx)
 		require.NoError(t, err)
-		require.Len(t, tasks, 1)
+		require.Len(t, result.Tasks, 1)
 
 		cancel()
 		wg.Wait()
@@ -117,16 +124,15 @@ func Test_Manager(t *testing.T) {
 
 type testProvider struct {
 	sync.Mutex
-	state []apiserver.Task
+	state apiserver.Result
 	err   error
 }
 
-func (p *testProvider) GetTasks(_ context.Context) ([]apiserver.Task, error) {
+func (p *testProvider) GetTasks(_ context.Context) (apiserver.Result, error) {
 	p.Lock()
 	defer p.Unlock()
 	if p.err != nil {
-		return nil, p.err
+		return p.state, p.err
 	}
 	return p.state, nil
 }
-

@@ -16,17 +16,17 @@ import (
 	"testing"
 )
 
-func Test_Provider(t *testing.T) {
+func Test_Marathon(t *testing.T) {
 
 	t.Run("should load application from marathon", func(t *testing.T) {
 		server := newTestMarathonServer(t, "apps.running.json")
 		provider := newTestProvider(t, server.URL)
 
-		providerTasks, err := provider.GetTasks(context.Background())
+		result, err := provider.GetTasks(context.Background())
 		require.NoError(t, err)
-		require.Len(t, providerTasks, 1)
+		require.Len(t, result.Tasks, 1)
 
-		task := providerTasks[0]
+		task := result.Tasks[0]
 		require.Equal(t, "/app/demo", task.ID)
 		require.Equal(t, "alpine", task.Image)
 		require.Equal(t, float32(0.1), task.CPU)

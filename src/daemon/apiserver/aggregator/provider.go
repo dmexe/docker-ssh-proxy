@@ -2,55 +2,58 @@ package aggregator
 
 import (
 	"context"
+	"daemon/apiserver"
 	"daemon/utils"
 	"github.com/Sirupsen/logrus"
 	"sync"
 	"time"
-	"daemon/apiserver"
 )
 
-// TasksManagerOptions keeps parameters for a new manager instance
+// ProviderOptions keeps parameters for a new manager instance
 type ProviderOptions struct {
 	Providers []apiserver.Provider
 	Interval  time.Duration
 }
 
-// TasksManager keeps internal tasks of a manager instance
+// Provider keeps internal tasks of a manager instance
 type Provider struct {
 	providers []apiserver.Provider
 	interval  time.Duration
 	log       *logrus.Entry
-	tasks     []apiserver.Task
+	result    apiserver.Result
 	counter   uint64
 	lock      sync.Mutex
 	ctx       context.Context
 }
 
-// NewManager creates a new manager with given options
+// NewProvider creates a new manager with given options
 func NewProvider(ctx context.Context, opts ProviderOptions) (*Provider, error) {
 	manager := &Provider{
 		providers: opts.Providers,
 		interval:  opts.Interval,
 		log:       utils.NewLogEntry("api.aggregator"),
 		ctx:       ctx,
+		result: apiserver.Result{
+			CreatedAt: time.Now(),
+		},
 	}
 
 	return manager, nil
 }
 
 // GetTasks returns collected tasks
-func (p *Provider) GetTasks(_ context.Context) ([]apiserver.Task, error) {
+func (p *Provider) GetTasks(_ context.Context) (apiserver.Result, error) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	return p.tasks, nil
+	return p.result, nil
 }
 
-func (p *Provider) setTasks(tasks []apiserver.Task) {
+func (p *Provider) setResult(result apiserver.Result) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	p.tasks = tasks
+	p.result = result
 	p.counter++
 }
 
@@ -61,7 +64,7 @@ func (p *Provider) Run(wg *sync.WaitGroup) error {
 		return err
 	}
 
-	p.log.Infof("TasksManager started")
+	p.log.Infof("Aggregator started")
 
 	wg.Add(1)
 
@@ -87,18 +90,30 @@ func (p *Provider) Run(wg *sync.WaitGroup) error {
 }
 
 func (p *Provider) load() error {
-	result := make([]apiserver.Task, 0)
+	collected := make([]apiserver.Task, 0)
+	sums := make([]string, 0)
 
 	for _, provider := range p.providers {
 		tasks, err := provider.GetTasks(p.ctx)
 		if err != nil {
 			return err
 		}
-		result = append(result, tasks...)
+		collected = append(collected, tasks.Tasks...)
+		sums = append(sums, tasks.Digest)
 	}
 
-	p.setTasks(result)
-	p.log.Debugf("Load %d tasks", len(result))
+	newDigest := utils.StringDigest(sums...)
+	if newDigest != p.result.Digest {
+		newResult := apiserver.Result{
+			Tasks:     collected,
+			Digest:    newDigest,
+			CreatedAt: time.Now(),
+		}
+		p.setResult(newResult)
+		p.log.Debugf("Load %d tasks", len(collected))
+	} else {
+		p.log.Debugf("Nothing changed", len(collected))
+	}
 
 	return nil
 }
@@ -108,4 +123,3 @@ func (p *Provider) getCounter() uint64 {
 	defer p.lock.Unlock()
 	return p.counter
 }
-

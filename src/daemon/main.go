@@ -29,9 +29,13 @@ func main() {
 	}
 
 	if cfg.api.enabled {
-		apiProvider := cfg.getApiProvider()
-
+		apiProvider := cfg.getAPIProvider()
 		if err := apiProvider.Run(&wg); err != nil {
+			log.Fatal(err)
+		}
+
+		apiServer := cfg.getAPIServer(apiProvider)
+		if err := apiServer.Run(&wg); err != nil {
 			log.Fatal(err)
 		}
 	}

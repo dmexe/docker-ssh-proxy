@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"daemon/apiserver"
 	"daemon/apiserver/aggregator"
 	"daemon/apiserver/marathon"
 	"daemon/payloads"
@@ -16,7 +17,6 @@ import (
 	"log"
 	"strings"
 	"time"
-	"daemon/apiserver"
 )
 
 type apiMarathonConfig struct {
@@ -51,16 +51,16 @@ type shellConfig struct {
 	enabled bool
 }
 
-type apiManagerConfig struct {
+type apiAggregatorConfig struct {
 	interval time.Duration
 }
 
 type apiConfig struct {
-	host     string
-	port     uint
-	marathon apiMarathonConfig
-	manager  apiManagerConfig
-	enabled  bool
+	host       string
+	port       uint
+	marathon   apiMarathonConfig
+	aggregator apiAggregatorConfig
+	enabled    bool
 }
 
 type appConfig struct {
@@ -82,7 +82,7 @@ func newAppConfig(ctx context.Context) appConfig {
 			host:     "0.0.0.0",
 			port:     2201,
 			marathon: apiMarathonConfig{},
-			manager: apiManagerConfig{
+			aggregator: apiAggregatorConfig{
 				interval: time.Duration(time.Minute),
 			},
 		},
@@ -103,8 +103,8 @@ func (cfg *appConfig) parseArgs() {
 	flag.StringVar(&cfg.api.host, "api.host", cfg.api.host, "The local addresses api server should listen on")
 	flag.UintVar(&cfg.api.port, "api.port", cfg.api.port, "The port number that api server listens on")
 	flag.Var(&cfg.api.marathon, "api.marathon.url", cfg.api.marathon.description())
-	flag.DurationVar(&cfg.api.manager.interval, "api.manager.interval", cfg.api.manager.interval, "The pool interval")
-	flag.BoolVar(&cfg.api.enabled, "api", cfg.shell.enabled, "Start the api server")
+	flag.DurationVar(&cfg.api.aggregator.interval, "api.interval", cfg.api.aggregator.interval, "The pool interval")
+	flag.BoolVar(&cfg.api.enabled, "api", cfg.api.enabled, "Start the api server")
 
 	// debug config
 	flag.StringVar(&cfg.debug.token, "debug.token", cfg.debug.token, "The debug token")
@@ -184,7 +184,7 @@ func (cfg *appConfig) getShellServer(privateKey []byte, handlerFunc handlers.Han
 	return server
 }
 
-func (cfg *appConfig) getApiProvider() apiserver.RunnableProvider {
+func (cfg *appConfig) getAPIProvider() apiserver.RunnableProvider {
 	providers := make([]apiserver.Provider, 0)
 
 	for _, url := range cfg.api.marathon.urls {
@@ -200,7 +200,7 @@ func (cfg *appConfig) getApiProvider() apiserver.RunnableProvider {
 
 	aggregatorOptions := aggregator.ProviderOptions{
 		Providers: providers,
-		Interval:  cfg.api.manager.interval,
+		Interval:  cfg.api.aggregator.interval,
 	}
 
 	manager, err := aggregator.NewProvider(cfg.ctx, aggregatorOptions)
@@ -209,4 +209,19 @@ func (cfg *appConfig) getApiProvider() apiserver.RunnableProvider {
 	}
 
 	return manager
+}
+
+func (cfg *appConfig) getAPIServer(provider apiserver.Provider) *apiserver.Server {
+	opts := apiserver.ServerOptions{
+		Host:     cfg.api.host,
+		Port:     cfg.api.port,
+		Provider: provider,
+	}
+
+	apiServer, err := apiserver.NewServer(cfg.ctx, opts)
+	if err != nil {
+		cfg.log.Fatal(err)
+	}
+
+	return apiServer
 }

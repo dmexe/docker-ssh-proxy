@@ -64,33 +64,37 @@ func NewProvider(options ProviderOptions) (*Provider, error) {
 	return m, nil
 }
 
-// LoadTasks from marathon
-func (p *Provider) GetTasks(ctx context.Context) ([]apiserver.Task, error) {
+// GetTasks from marathon
+func (p *Provider) GetTasks(ctx context.Context) (apiserver.Result, error) {
 	endpoint := fmt.Sprintf("%s/apps?embed=apps.tasks", p.url.String())
 	respApps := appsResponse{}
+	emptyResult := apiserver.Result{}
 
 	request, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Could not build request (%s)", err)
+		return emptyResult, fmt.Errorf("Could not build request (%s)", err)
 	}
 
 	response, err := p.cli.Do(request.WithContext(ctx))
 	if err != nil {
-		return nil, fmt.Errorf("Could not load marathon apps (%s)", err)
+		return emptyResult, fmt.Errorf("Could not load marathon apps (%s)", err)
 	}
 
 	if err := p.parseJSON(response, &respApps); err != nil {
-		return nil, fmt.Errorf("Could not parse json response (%s)", err)
+		return emptyResult, fmt.Errorf("Could not parse json response (%s)", err)
 	}
 
 	return p.buildTasks(respApps)
 }
 
-func (p *Provider) buildTasks(respApps appsResponse) ([]apiserver.Task, error) {
+func (p *Provider) buildTasks(respApps appsResponse) (apiserver.Result, error) {
 	result := make([]apiserver.Task, 0)
+	sums := make([]string, 0)
 
 	for _, respApp := range respApps.Apps {
 		instances := make([]apiserver.TaskInstance, 0)
+		instancesSum := make([]string, 0)
+		tasksSum := make([]string, 0)
 
 		for _, respTask := range respApp.Tasks {
 			instance := apiserver.TaskInstance{}
@@ -100,7 +104,15 @@ func (p *Provider) buildTasks(respApps appsResponse) ([]apiserver.Task, error) {
 			instance.State = p.buildTaskStatus(respTask)
 			instance.UpdatedAt = respTask.StartedAt
 			instance.Payload = p.buildPayload(respTask)
+
+			instance.Digest = utils.StringDigest(
+				instance.ID,
+				respTask.StagedAt.String(),
+				respTask.StartedAt.String(),
+			)
+
 			instances = append(instances, instance)
+			instancesSum = append(instancesSum, instance.Digest)
 		}
 
 		if len(instances) > 0 {
@@ -112,12 +124,25 @@ func (p *Provider) buildTasks(respApps appsResponse) ([]apiserver.Task, error) {
 			task.Constraints = p.buildConstraints(respApp)
 			task.UpdatedAt = respApp.VersionInfo.LastConfigChangeAt
 			task.Instances = instances
+
+			task.Digest = utils.StringDigest(
+				task.ID,
+				respApp.VersionInfo.LastConfigChangeAt.String(),
+				respApp.VersionInfo.LastScalingAt.String(),
+				utils.StringDigest(tasksSum...),
+			)
+
 			result = append(result, task)
+			sums = append(sums, task.Digest)
 		}
 	}
 
-	return result, nil
+	return apiserver.Result{
+		Tasks:  result,
+		Digest: utils.StringDigest(sums...),
+	}, nil
 }
+
 func (p *Provider) buildPayload(respTask taskResponse) payloads.Payload {
 	return payloads.Payload{
 		ContainerEnv: fmt.Sprintf("MESOS_TASK_ID=%s", respTask.ID),
