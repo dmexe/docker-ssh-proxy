@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// BytesBackedPipe is a pipe for testing, it can handle async I/O ops
-type BytesBackedPipe struct {
+// BufferedPipe is a pipe for testing
+type BufferedPipe struct {
 	sync.RWMutex
 	ReadIn       *io.PipeReader
 	ReadOut      *io.PipeWriter
@@ -20,12 +20,12 @@ type BytesBackedPipe struct {
 	readComplete chan error
 }
 
-// NewBytesBackedPipe creates a new pipe
-func NewBytesBackedPipe() *BytesBackedPipe {
+// NewBufferedPipe creates a new pipe
+func NewBufferedPipe() *BufferedPipe {
 	readIn, readOut := io.Pipe()
 	writeIn, writeOut := io.Pipe()
 
-	pipe := &BytesBackedPipe{
+	pipe := &BufferedPipe{
 		ReadIn:       readIn,
 		ReadOut:      readOut,
 		WriteIn:      writeIn,
@@ -37,22 +37,22 @@ func NewBytesBackedPipe() *BytesBackedPipe {
 	return pipe
 }
 
-// String content of readed bytes
-func (p *BytesBackedPipe) String() string {
+// String content of read bytes
+func (p *BufferedPipe) String() string {
 	return p.Bytes.String()
 }
 
 // IoReader interface
-func (p *BytesBackedPipe) IoReader() io.Reader {
+func (p *BufferedPipe) IoReader() io.Reader {
 	return p.WriteIn
 }
 
 // IoWriter interface
-func (p *BytesBackedPipe) IoWriter() io.Writer {
+func (p *BufferedPipe) IoWriter() io.Writer {
 	return p.ReadOut
 }
 
-func (p *BytesBackedPipe) readAsync() {
+func (p *BufferedPipe) readAsync() {
 	go func() {
 		buf := make([]byte, 128)
 		for {
@@ -74,7 +74,7 @@ func (p *BytesBackedPipe) readAsync() {
 }
 
 // WaitString waits until a given string appears in the buffer
-func (p *BytesBackedPipe) WaitString(str string) error {
+func (p *BufferedPipe) WaitString(str string) error {
 	finished := make(chan bool)
 	defer close(finished)
 
@@ -108,7 +108,7 @@ func (p *BytesBackedPipe) WaitString(str string) error {
 }
 
 // SendString to pipe
-func (p *BytesBackedPipe) SendString(str string) error {
+func (p *BufferedPipe) SendString(str string) error {
 	c := make(chan error)
 	defer close(c)
 	go func() {

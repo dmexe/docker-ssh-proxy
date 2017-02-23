@@ -33,4 +33,5 @@ function go_get() {
 get_url ${govendor_path} ${govendor_url}
 chmod +x ${govendor_path}
 
-go_get golint github.com/golang/lint/golint
+go_get golint "github.com/golang/lint/golint"
+go_get go-bindata "github.com/jteeuwen/go-bindata/..."

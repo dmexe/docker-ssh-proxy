@@ -105,8 +105,8 @@ func newEchoHandler(errors handlers.EchoHandlerErrors) handlers.HandlerFunc {
 	}
 }
 
-func setupSessionPipe(t *testing.T, s *ssh.Session) *utils.BytesBackedPipe {
-	pipe := utils.NewBytesBackedPipe()
+func setupSessionPipe(t *testing.T, s *ssh.Session) *utils.BufferedPipe {
+	pipe := utils.NewBufferedPipe()
 
 	stdin, err := s.StdinPipe()
 	require.NoError(t, err)

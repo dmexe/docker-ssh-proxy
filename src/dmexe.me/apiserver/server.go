@@ -3,12 +3,10 @@ package apiserver
 import (
 	"context"
 	"dmexe.me/utils"
-	"encoding/json"
 	"fmt"
 	"github.com/Sirupsen/logrus"
-	"github.com/gorilla/mux"
 	"net/http"
-	"github.com/gorilla/handlers"
+	ghandlers "github.com/gorilla/handlers"
 	"net"
 	"sync"
 )
@@ -40,60 +38,22 @@ func NewServer(ctx context.Context, opts ServerOptions) (*Server, error) {
 	return server, nil
 }
 
-func (s *Server) renderJSON(w http.ResponseWriter, code int, obj interface{}) {
-	bb, err := json.Marshal(obj)
-	if err != nil {
-		s.log.Errorf("Could not marashal json (%s)", err)
-		return
-	}
-
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(code)
-
-	if _, err := w.Write(bb); err != nil {
-		s.log.Errorf("Could not write response (%s)", err)
-		return
-	}
-}
-
-func (s *Server) renderError(w http.ResponseWriter, err error) {
-	s.renderJSON(w, http.StatusInternalServerError, map[string]string{
-		"error": err.Error(),
-	})
-}
-
-func (s *Server) getHealth(w http.ResponseWriter, r *http.Request) {
-	s.renderJSON(w, http.StatusOK, map[string]string{
-		"status": "UP",
-	})
-}
-
-func (s *Server) getTasksHandler(w http.ResponseWriter, r *http.Request) {
-	tasks, err := s.provider.GetTasks(s.ctx)
-	if err != nil {
-		s.renderError(w, err)
-	} else {
-		s.renderJSON(w, http.StatusOK, tasks)
-	}
-}
-
 // Run server
 func (s *Server) Run(wg *sync.WaitGroup) error {
-	rootRouter := mux.NewRouter()
-	rootRouter.Methods("GET").Path("/health").HandlerFunc(s.getHealth)
+	broker := utils.NewBytesBroker(context.WithValue(s.ctx, 0, s))
+	if err := broker.Run(wg); err != nil {
+		return fmt.Errorf("Could not run broker (%s)", err)
+	}
 
-	apiRouter := rootRouter.PathPrefix("/a/v1").Subrouter()
-	apiRouter.Methods("GET").Path("/tasks").HandlerFunc(s.getTasksHandler)
+	h := &handlers{
+		log: s.log,
+		provider: s.provider,
+		broker: broker,
+	}
 
-	rootRouter.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
-		if t, err := route.GetPathTemplate(); err == nil {
-			s.log.Debugf("Route %s", t)
-		}
-		return nil
-	})
-
+	router := h.getRouter()
 	server := &http.Server{
-		Handler: handlers.CORS()(rootRouter),
+		Handler: ghandlers.CORS()(router),
 	}
 
 	listener, err := net.Listen("tcp", s.listenAddress)
@@ -110,7 +70,7 @@ func (s *Server) Run(wg *sync.WaitGroup) error {
 			return
 		}
 
-		if err := s.httpServer.Shutdown(s.ctx); err != nil {
+		if err := s.httpServer.Shutdown(context.Background()); err != nil {
 			s.log.Errorf("Could not shutdown (%s)", err)
 		}
 	}()

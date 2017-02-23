@@ -5,7 +5,7 @@ DEVSERVER    := $(YARN) run webpack-dev-server --
 
 export NODE_PATH=$(NODE_MODULES)
 
-all: dev
+all: dev.server
 
 dev:
 	$(WEBPACK) --config build/dev.js --progress

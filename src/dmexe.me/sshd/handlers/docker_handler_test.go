@@ -40,7 +40,7 @@ func Test_DockerHandler(t *testing.T) {
 			Height: 40,
 		}
 
-		pipe := utils.NewBytesBackedPipe()
+		pipe := utils.NewBufferedPipe()
 
 		handleReq := &Request{
 			Tty:     tty,
@@ -93,7 +93,7 @@ func Test_DockerHandler(t *testing.T) {
 		handler := newTestDockerHandler(t, cli)
 		defer closeTestDockerHandler(t, handler)
 
-		pipe := utils.NewBytesBackedPipe()
+		pipe := utils.NewBufferedPipe()
 
 		handleReq := &Request{
 			Stdin:   iotest.NewReadLogger("[r]: ", pipe.IoReader()),
@@ -132,7 +132,7 @@ func Test_DockerHandler(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			pipe := utils.NewBytesBackedPipe()
+			pipe := utils.NewBufferedPipe()
 
 			handleReq := &Request{
 				Stdin:   iotest.NewReadLogger("[r]: ", pipe.IoReader()),
@@ -185,7 +185,7 @@ func Test_DockerHandler(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		pipe := utils.NewBytesBackedPipe()
+		pipe := utils.NewBufferedPipe()
 
 		handleReq := &Request{
 			Stdin:   iotest.NewReadLogger("[r]: ", pipe.IoReader()),
