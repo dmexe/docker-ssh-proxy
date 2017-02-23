@@ -1,0 +1,19 @@
+#!/bin/bash
+
+image=dmexe.me/daemon
+
+set -ex
+
+if [ "$1" == "build" ] ; then
+  make deps
+  make test
+  make build.release
+  true
+else
+  docker build -t ${image} .
+  exec docker run \
+    -it \
+    --rm \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    ${image}
+fi

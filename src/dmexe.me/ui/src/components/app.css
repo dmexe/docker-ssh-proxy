@@ -1,0 +1,63 @@
+html {
+  background-color: #f5f7fa;
+}
+
+.container {
+  padding-top: 20px;
+}
+
+.section {
+  margin-top: 20px;
+  border: 1px solid #efefef;
+  border-radius: 5px;
+  padding-top: 2rem;
+}
+
+.tasks-table {
+  margin-top: 3rem;
+}
+
+.tasks-table tr {
+  border-top: 1px solid #eee;
+}
+
+.tasks-table td {
+  padding: 1em 0;
+}
+
+.tasks-table th {
+  font-weight: normal;
+  padding-bottom: 1em;
+  font-size: 1rem;
+}
+
+.tasks-table th:nth-child(2) {
+  text-align: center;
+}
+
+.tasks-table th:nth-child(3) {
+  padding-left: 6.6em;
+}
+
+.task-id {
+  margin-top: .3em;
+}
+
+.task-instances {
+  margin-top: .3em;
+  margin-right: .6em;
+}
+
+.task-row label {
+  display: inline-block;
+  width: 6em;
+  margin-right: .4em;
+  text-align: right;
+}
+
+.task-row label:after {
+  content: ":";
+}
+
+.task-row span {
+}

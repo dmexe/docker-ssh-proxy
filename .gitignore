@@ -1,6 +1,7 @@
 /pkg/
-/src/daemon/vendor/*/
-/src/github.com
+/src/dmexe.me/vendor/*/
+/src/dmexe.me/ui/node_modules/
+/src/dmexe.me/ui/dist/
 /bin/govendor
 /bin/daemon*
 /bin/id_rsa*
