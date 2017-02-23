@@ -55,21 +55,19 @@ func NewSession(ctx context.Context, options *SessionOptions) *Session {
 
 // Handle new client request
 func (s *Session) Handle() error {
-	go s.handleConnectionRequests()
-	go s.handleChannelRequests()
+	go func() {
+		for newChannel := range s.newChannels {
+			s.handleChannelRequest(newChannel)
+		}
+	}()
+
+	go func() {
+		for req := range s.requests {
+			reqReply(req, false, s.log)
+		}
+	}()
+
 	return nil
-}
-
-func (s *Session) handleChannelRequests() {
-	for newChannel := range s.newChannels {
-		s.handleChannelRequest(newChannel)
-	}
-}
-
-func (s *Session) handleConnectionRequests() {
-	for req := range s.requests {
-		reqReply(req, false, s.log)
-	}
 }
 
 func (s *Session) handleChannelRequest(newChannel ssh.NewChannel) {

@@ -27,32 +27,32 @@ const (
 
 // Task keeps exported task fields and instances
 type Task struct {
-	ID          string `json:"id"`
-	Image       string `json:"image"`
-	CPU         float32 `json:"cpu"`
-	Mem         uint `json:"mem"`
+	ID          string            `json:"id"`
+	Image       string            `json:"image"`
+	CPU         float32           `json:"cpu"`
+	Mem         uint              `json:"mem"`
 	Constraints map[string]string `json:"constraints"`
-	Instances   []TaskInstance `json:"instances"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Digest      string `json:"digest"`
+	Instances   []TaskInstance    `json:"instances"`
+	UpdatedAt   time.Time         `json:"updatedAt"`
+	Digest      string            `json:"digest"`
 }
 
 // TaskInstance keeps exported instance fields
 type TaskInstance struct {
-	ID        string `json:"id"`
-	Addr      net.IP `json:"addr"`
-	State     string `json:"state"`
-	Healthy   bool `json:"healthy"`
+	ID        string           `json:"id"`
+	Addr      net.IP           `json:"addr"`
+	State     string           `json:"state"`
+	Healthy   bool             `json:"healthy"`
 	Payload   payloads.Payload `json:"payload"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Digest    string `json:"digest"`
+	UpdatedAt time.Time        `json:"updatedAt"`
+	Digest    string           `json:"digest"`
 }
 
 // Result contains tasks and digest
 type Result struct {
-	Tasks     []Task `json:"tasks"`
-	Digest    string `json:"digest"`
-	CreatedAt time.Time `json:"created_at"`
+	Tasks     []Task    `json:"tasks"`
+	Digest    string    `json:"digest"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // Provider is an interface for task loaders

@@ -5,9 +5,9 @@ import (
 	"dmexe.me/utils"
 	"fmt"
 	"github.com/Sirupsen/logrus"
-	"net/http"
 	ghandlers "github.com/gorilla/handlers"
 	"net"
+	"net/http"
 	"sync"
 )
 
@@ -16,6 +16,7 @@ type ServerOptions struct {
 	Host     string
 	Port     uint
 	Provider Provider
+	Broker   *Broker
 }
 
 // Server instance
@@ -25,6 +26,7 @@ type Server struct {
 	ctx           context.Context
 	provider      Provider
 	httpServer    *http.Server
+	broker        *Broker
 }
 
 // NewServer creates a new server using given context and options
@@ -34,21 +36,18 @@ func NewServer(ctx context.Context, opts ServerOptions) (*Server, error) {
 		listenAddress: fmt.Sprintf("%s:%d", opts.Host, opts.Port),
 		log:           utils.NewLogEntry("api.server"),
 		ctx:           ctx,
+		broker:        opts.Broker,
 	}
 	return server, nil
 }
 
 // Run server
 func (s *Server) Run(wg *sync.WaitGroup) error {
-	broker := utils.NewBytesBroker(context.WithValue(s.ctx, 0, s))
-	if err := broker.Run(wg); err != nil {
-		return fmt.Errorf("Could not run broker (%s)", err)
-	}
 
 	h := &handlers{
-		log: s.log,
+		log:      s.log,
 		provider: s.provider,
-		broker: broker,
+		broker:   s.broker,
 	}
 
 	router := h.getRouter()

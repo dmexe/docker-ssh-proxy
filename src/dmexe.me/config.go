@@ -51,6 +51,8 @@ type shellConfig struct {
 	enabled bool
 }
 
+type appConfigKey string
+
 type apiAggregatorConfig struct {
 	interval time.Duration
 }
@@ -176,7 +178,7 @@ func (cfg *appConfig) getShellServer(privateKey []byte, handlerFunc handlers.Han
 		Parser:      payloadParser,
 	}
 
-	server, err := sshd.NewServer(cfg.ctx, serverOptions)
+	server, err := sshd.NewServer(cfg.newChildContext(), serverOptions)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -184,7 +186,11 @@ func (cfg *appConfig) getShellServer(privateKey []byte, handlerFunc handlers.Han
 	return server
 }
 
-func (cfg *appConfig) getAPIProvider() apiserver.RunnableProvider {
+func (cfg *appConfig) getBroker() *apiserver.Broker {
+	return apiserver.NewBroker(cfg.newChildContext())
+}
+
+func (cfg *appConfig) getAPIProvider(broker *apiserver.Broker) apiserver.RunnableProvider {
 	providers := make([]apiserver.Provider, 0)
 
 	for _, url := range cfg.api.marathon.urls {
@@ -201,9 +207,10 @@ func (cfg *appConfig) getAPIProvider() apiserver.RunnableProvider {
 	aggregatorOptions := aggregator.ProviderOptions{
 		Providers: providers,
 		Interval:  cfg.api.aggregator.interval,
+		Broker:    broker,
 	}
 
-	manager, err := aggregator.NewProvider(cfg.ctx, aggregatorOptions)
+	manager, err := aggregator.NewProvider(cfg.newChildContext(), aggregatorOptions)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -211,17 +218,22 @@ func (cfg *appConfig) getAPIProvider() apiserver.RunnableProvider {
 	return manager
 }
 
-func (cfg *appConfig) getAPIServer(provider apiserver.Provider) *apiserver.Server {
+func (cfg *appConfig) getAPIServer(provider apiserver.Provider, broker *apiserver.Broker) *apiserver.Server {
 	opts := apiserver.ServerOptions{
 		Host:     cfg.api.host,
 		Port:     cfg.api.port,
 		Provider: provider,
+		Broker:   broker,
 	}
 
-	apiServer, err := apiserver.NewServer(cfg.ctx, opts)
+	apiServer, err := apiserver.NewServer(cfg.newChildContext(), opts)
 	if err != nil {
 		cfg.log.Fatal(err)
 	}
 
 	return apiServer
+}
+
+func (cfg *appConfig) newChildContext() context.Context {
+	return context.WithValue(cfg.ctx, appConfigKey("name"), "child")
 }

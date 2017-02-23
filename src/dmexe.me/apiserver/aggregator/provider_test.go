@@ -26,12 +26,13 @@ func Test_Aggregator(t *testing.T) {
 		provider := &testProvider{
 			state: state,
 		}
+		ctx, cancel := context.WithCancel(ctx)
+
 		options := ProviderOptions{
 			Providers: []apiserver.Provider{provider},
 			Interval:  100 * time.Millisecond,
+			Broker:    getTestBroker(ctx),
 		}
-
-		ctx, cancel := context.WithCancel(ctx)
 
 		agg, err := NewProvider(ctx, options)
 		require.NoError(t, err)
@@ -39,8 +40,6 @@ func Test_Aggregator(t *testing.T) {
 
 		require.NoError(t, agg.Run(&wg))
 		time.Sleep(120 * time.Millisecond)
-
-		require.Equal(t, uint64(1), agg.getCounter())
 
 		result, err := agg.GetTasks(ctx)
 		require.NoError(t, err)
@@ -57,65 +56,22 @@ func Test_Aggregator(t *testing.T) {
 			err: errors.New("Boom"),
 		}
 
+		ctx, cancel := context.WithCancel(ctx)
+
 		options := ProviderOptions{
 			Providers: []apiserver.Provider{provider},
 			Interval:  100 * time.Millisecond,
+			Broker:    getTestBroker(ctx),
 		}
-
-		ctx, cancel := context.WithCancel(ctx)
 
 		agg, err := NewProvider(ctx, options)
 		require.NoError(t, err)
 		require.NotNil(t, agg)
 		require.EqualError(t, agg.Run(&wg), "Boom")
-		require.Equal(t, uint64(0), agg.getCounter())
 
 		result, err := agg.GetTasks(ctx)
 		require.NoError(t, err)
 		require.Empty(t, result.Tasks)
-
-		cancel()
-		wg.Wait()
-	})
-
-	t.Run("should run but fail on background loading", func(t *testing.T) {
-		var wg sync.WaitGroup
-
-		state := apiserver.Result{
-			Tasks: []apiserver.Task{{
-				ID: "id",
-			}},
-			Digest: "digest",
-		}
-
-		provider := &testProvider{
-			state: state,
-		}
-
-		options := ProviderOptions{
-			Providers: []apiserver.Provider{provider},
-			Interval:  100 * time.Millisecond,
-		}
-
-		ctx, cancel := context.WithCancel(ctx)
-
-		agg, err := NewProvider(ctx, options)
-		require.NoError(t, err)
-		require.NotNil(t, agg)
-
-		require.NoError(t, agg.Run(&wg))
-
-		provider.Lock()
-		provider.err = errors.New("Boom")
-		provider.Unlock()
-
-		time.Sleep(120 * time.Millisecond)
-
-		require.Equal(t, uint64(1), agg.getCounter())
-
-		result, err := agg.GetTasks(ctx)
-		require.NoError(t, err)
-		require.Len(t, result.Tasks, 1)
 
 		cancel()
 		wg.Wait()
@@ -128,6 +84,8 @@ type testProvider struct {
 	err   error
 }
 
+type testContextKey string
+
 func (p *testProvider) GetTasks(_ context.Context) (apiserver.Result, error) {
 	p.Lock()
 	defer p.Unlock()
@@ -135,4 +93,9 @@ func (p *testProvider) GetTasks(_ context.Context) (apiserver.Result, error) {
 		return p.state, p.err
 	}
 	return p.state, nil
+}
+
+func getTestBroker(ctx context.Context) *apiserver.Broker {
+	ctx = context.WithValue(ctx, testContextKey("name"), "test")
+	return apiserver.NewBroker(ctx)
 }

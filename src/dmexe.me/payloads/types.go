@@ -2,9 +2,9 @@ package payloads
 
 // Payload holds queries
 type Payload struct {
-	ContainerID    string `json:"container_id"`
-	ContainerEnv   string `json:"container_env"`
-	ContainerLabel string `json:"container_label"`
+	ContainerID    string `json:"containerId"`
+	ContainerEnv   string `json:"containerEnv"`
+	ContainerLabel string `json:"containerLabel"`
 }
 
 // Parser generic interface

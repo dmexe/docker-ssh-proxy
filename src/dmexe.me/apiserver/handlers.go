@@ -1,19 +1,18 @@
 package apiserver
 
 import (
-	"github.com/Sirupsen/logrus"
-	"net/http"
 	"encoding/json"
-	"github.com/gorilla/mux"
-	"dmexe.me/utils"
 	"fmt"
+	"github.com/Sirupsen/logrus"
+	"github.com/gorilla/mux"
+	"net/http"
 	"time"
 )
 
 type handlers struct {
-	log *logrus.Entry
+	log      *logrus.Entry
 	provider Provider
-	broker *utils.BytesBroker
+	broker   *Broker
 }
 
 func (h *handlers) getRouter() *mux.Router {
@@ -76,9 +75,9 @@ func (h *handlers) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	messages := make(chan []byte)
-	defer h.broker.Remove(messages)
-	h.broker.Add(messages)
+	events := make(chan BrokerEvent)
+	defer h.broker.Remove(events)
+	h.broker.Add(events)
 
 	notify := w.(http.CloseNotifier).CloseNotify()
 
@@ -88,15 +87,20 @@ func (h *handlers) handleStream(w http.ResponseWriter, r *http.Request) {
 			h.log.Debugf("Client closed stream")
 			return
 
-		case <- time.After(3 * time.Second):
+		case <-time.After(3 * time.Second):
 			if _, err := fmt.Fprint(w, "data: n\n\n"); err != nil {
 				h.log.Warnf("Could not write (%s)", err)
 				return
 			}
 			flusher.Flush()
 
-		case payload := <- messages:
-			if _, err := fmt.Fprintf(w, "event: stream\ndata: %s\n\n", payload); err != nil {
+		case evt := <-events:
+			data := evt.Data
+			if len(data) == 0 {
+				data = []byte("n")
+			}
+
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Name, data); err != nil {
 				h.log.Warnf("Could not write (%s)", err)
 				return
 			}

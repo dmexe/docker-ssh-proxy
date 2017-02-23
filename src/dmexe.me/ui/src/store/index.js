@@ -2,6 +2,7 @@ import Vue from 'vue'
 import Vuex from 'vuex'
 import logger from 'vuex/dist/logger'
 
+import stream from './../api/stream';
 import tasks from './modules/tasks'
 import * as taskTypes from './modules/tasks/types'
 
@@ -19,8 +20,15 @@ const store = new Vuex.Store({
   },
   strict: debug,
   plugins: debug ? [logger()] : []
-})
+});
 
-store.dispatch('tasks/' + taskTypes.FETCH_ALL)
+const fetchTasks = (store) => store.dispatch('tasks/' + taskTypes.FETCH_ALL)
+
+stream()
+  .then((subscribe) => {
+    subscribe("tasks.changed", () => fetchTasks(store))
+  });
+
+fetchTasks(store);
 
 export default store

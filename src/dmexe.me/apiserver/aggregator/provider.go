@@ -13,6 +13,7 @@ import (
 type ProviderOptions struct {
 	Providers []apiserver.Provider
 	Interval  time.Duration
+	Broker    *apiserver.Broker
 }
 
 // Provider keeps internal tasks of a manager instance
@@ -21,9 +22,8 @@ type Provider struct {
 	interval  time.Duration
 	log       *logrus.Entry
 	result    apiserver.Result
-	counter   uint64
-	lock      sync.Mutex
 	ctx       context.Context
+	broker    *apiserver.Broker
 }
 
 // NewProvider creates a new manager with given options
@@ -36,6 +36,7 @@ func NewProvider(ctx context.Context, opts ProviderOptions) (*Provider, error) {
 		result: apiserver.Result{
 			CreatedAt: time.Now(),
 		},
+		broker: opts.Broker,
 	}
 
 	return manager, nil
@@ -43,18 +44,7 @@ func NewProvider(ctx context.Context, opts ProviderOptions) (*Provider, error) {
 
 // GetTasks returns collected tasks
 func (p *Provider) GetTasks(_ context.Context) (apiserver.Result, error) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
 	return p.result, nil
-}
-
-func (p *Provider) setResult(result apiserver.Result) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	p.result = result
-	p.counter++
 }
 
 // Run pooling
@@ -109,17 +99,16 @@ func (p *Provider) load() error {
 			Digest:    newDigest,
 			CreatedAt: time.Now(),
 		}
-		p.setResult(newResult)
+
+		p.result = newResult
+
+		p.broker.Notify(apiserver.BrokerEvent{
+			Name: "tasks.changed",
+		})
 		p.log.Debugf("Load %d tasks", len(collected))
 	} else {
 		p.log.Debug("Nothing changed")
 	}
 
 	return nil
-}
-
-func (p *Provider) getCounter() uint64 {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-	return p.counter
 }

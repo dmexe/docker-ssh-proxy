@@ -1,48 +1,48 @@
-package utils
+package apiserver
 
 import (
-	"testing"
 	"context"
-	"sync"
-	"github.com/stretchr/testify/require"
 	"github.com/Sirupsen/logrus"
+	"github.com/stretchr/testify/require"
+	"sync"
+	"testing"
 )
 
 func Test_BytesBroker(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	payload := []byte{1}
+	payload := BrokerEvent{Name: "test", Data: []byte{1}}
 
 	logrus.SetLevel(logrus.DebugLevel)
 
-	broker := NewBytesBroker(ctx)
+	broker := NewBroker(ctx)
 	require.NoError(t, broker.Run(&wg))
 
 	t.Run("should register/deregister clients", func(t *testing.T) {
-		var msg []byte
+		var evt BrokerEvent
 
 		// add first client
-		clientA := make(chan []byte, 1)
+		clientA := make(chan BrokerEvent, 1)
 		broker.Add(clientA)
 		go broker.Notify(payload)
 
 		// receive message
-		msg = <- clientA
-		require.Equal(t, payload, msg)
+		evt = <-clientA
+		require.Equal(t, payload, evt)
 		require.Equal(t, 1, broker.length())
 
 		// add second client
-		clientB := make(chan []byte, 1)
+		clientB := make(chan BrokerEvent, 1)
 		broker.Add(clientB)
 		go broker.Notify(payload)
 
 		// receive
-		msg = <- clientA
-		require.Equal(t, payload, msg)
+		evt = <-clientA
+		require.Equal(t, payload, evt)
 
 		// receive
-		msg = <- clientB
-		require.Equal(t, payload, msg)
+		evt = <-clientB
+		require.Equal(t, payload, evt)
 
 		// remove first client
 		require.Equal(t, 2, broker.length())
@@ -51,13 +51,13 @@ func Test_BytesBroker(t *testing.T) {
 		go broker.Notify(payload)
 
 		// receive
-		msg = <- clientB
-		require.Equal(t, payload, msg)
+		evt = <-clientB
+		require.Equal(t, payload, evt)
 		require.Equal(t, 1, broker.length())
 
 		broker.Remove(clientB)
 	})
 
 	cancel()
-	wg.Done()
+	wg.Wait()
 }
